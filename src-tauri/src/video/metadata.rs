@@ -11,11 +11,11 @@ pub struct VideoMetadata {
 }
 
 pub fn get_video_metadata(file_path: &str) -> Result<VideoMetadata, String> {
-    let cwd = std::env::current_dir().map_err(|e| format!("CWD failed: {}", e))?;
-    let ffprobe_path = cwd.join("bin/ffprobe");
+    let root = crate::utils::paths::workspace_root()?;
+    let ffprobe_path = root.join("bin/ffprobe");
 
     if !ffprobe_path.exists() {
-        return Err("ffprobe binary not found in isolated bin/".to_string());
+        return Err(format!("ffprobe not found at {:?}. Run setup.sh first.", ffprobe_path));
     }
 
     // Call ffprobe to fetch format info in JSON

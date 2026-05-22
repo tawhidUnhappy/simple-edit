@@ -21,11 +21,11 @@ pub async fn check_system_status() -> Result<SystemStatus, String> {
     let hardware = detect_hardware();
 
     // 2. Resolve paths relative to current working directory
-    let cwd = std::env::current_dir().map_err(|e| format!("Failed to get CWD: {}", e))?;
-    
-    let micromamba_path = cwd.join("bin/micromamba");
-    let conda_env_path = cwd.join("conda_env");
-    let ffmpeg_path = cwd.join("bin/ffmpeg");
+    let root = crate::utils::paths::workspace_root()?;
+
+    let micromamba_path = root.join("bin/micromamba");
+    let conda_env_path = root.join("conda_env");
+    let ffmpeg_path = root.join("bin/ffmpeg");
 
     let micromamba_exists = micromamba_path.exists();
     let conda_env_exists = conda_env_path.exists();

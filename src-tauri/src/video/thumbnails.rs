@@ -19,16 +19,16 @@ pub async fn generate_thumbnails_in_background(
     let clip_id_clone = clip_id.clone();
 
     tokio::spawn(async move {
-        let cwd = match std::env::current_dir() {
-            Ok(dir) => dir,
+        let root = match crate::utils::paths::workspace_root() {
+            Ok(r) => r,
             Err(e) => {
-                emit_error(app_clone, clip_id_clone, format!("Failed to get CWD: {}", e));
+                emit_error(app_clone, clip_id_clone, e);
                 return;
             }
         };
 
-        let ffmpeg_path = cwd.join("bin/ffmpeg");
-        let clip_thumbnails_dir = cwd.join("temp/thumbnails").join(&clip_id_clone);
+        let ffmpeg_path = root.join("bin/ffmpeg");
+        let clip_thumbnails_dir = root.join("temp/thumbnails").join(&clip_id_clone);
 
         if let Err(e) = std::fs::create_dir_all(&clip_thumbnails_dir) {
             emit_error(app_clone, clip_id_clone, format!("Failed to create clip thumbnail directory: {}", e));

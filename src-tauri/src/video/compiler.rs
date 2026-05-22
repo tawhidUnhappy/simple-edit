@@ -45,11 +45,11 @@ pub async fn run_ffmpeg_export(
     tracks: Vec<Track>,
     output_path: String,
 ) -> Result<String, String> {
-    let cwd = std::env::current_dir().map_err(|e| format!("Failed to get CWD: {}", e))?;
-    let ffmpeg_path = cwd.join("bin/ffmpeg");
+    let root = crate::utils::paths::workspace_root()?;
+    let ffmpeg_path = root.join("bin/ffmpeg");
 
     if !ffmpeg_path.exists() {
-        return Err("Isolated FFmpeg binary not found inside bin/".to_string());
+        return Err(format!("ffmpeg not found at {:?}. Run setup.sh first.", ffmpeg_path));
     }
 
     // 1. Calculate project duration

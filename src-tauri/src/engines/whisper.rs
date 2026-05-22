@@ -39,10 +39,10 @@ pub async fn transcribe_video(
     video_path: String,
     model_name: String,
 ) -> Result<Vec<SubtitleSegment>, String> {
-    let cwd = std::env::current_dir().map_err(|e| format!("Failed to get CWD: {}", e))?;
-    
+    let root = crate::utils::paths::workspace_root()?;
+
     // Ensure temp dir exists
-    let temp_dir = cwd.join("temp");
+    let temp_dir = root.join("temp");
     std::fs::create_dir_all(&temp_dir)
         .map_err(|e| format!("Failed to create temp dir: {}", e))?;
 
@@ -52,20 +52,20 @@ pub async fn transcribe_video(
     let json_path = temp_dir.join(format!("transcribe_{}.wav.json", run_id));
 
     // Resolve model path
-    let model_path = cwd.join("models").join(&model_name);
+    let model_path = root.join("models").join(&model_name);
     if !model_path.exists() {
         return Err(format!("Whisper model does not exist at {:?}", model_path));
     }
 
     // Resolve whisper-cli and ffmpeg binaries
-    let ffmpeg_bin = cwd.join("bin/ffmpeg");
-    let whisper_bin = cwd.join("bin/whisper-cli");
+    let ffmpeg_bin = root.join("bin/ffmpeg");
+    let whisper_bin = root.join("bin/whisper-cli");
 
     if !ffmpeg_bin.exists() {
-        return Err("FFmpeg binary not found in bin/ffmpeg. Run setup first.".to_string());
+        return Err(format!("ffmpeg not found at {:?}. Run setup.sh first.", ffmpeg_bin));
     }
     if !whisper_bin.exists() {
-        return Err("whisper-cli binary not found in bin/whisper-cli. Compile whisper.cpp first.".to_string());
+        return Err(format!("whisper-cli not found at {:?}. Compile whisper.cpp first.", whisper_bin));
     }
 
     // 1. Extract 16kHz mono WAV from the video file using FFmpeg
