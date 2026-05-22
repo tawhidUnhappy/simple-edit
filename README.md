@@ -61,8 +61,8 @@ If you are cloning this repository from GitHub to customize, develop, or compile
 
 #### Prerequisites
 *   **Rust & Cargo**: Required to compile the Tauri backend (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`).
-*   **Node.js (v18+)**: Required to build the React TypeScript frontend.
-*   **System Tools**: `build-essential`, `cmake`, and `curl` (for compiling native whisper.cpp/stable-diffusion C++ engines).
+*   **System Tools**: `build-essential`, `cmake`, and `curl` (required for bootstrapping and compiling native whisper.cpp/stable-diffusion C++ engines).
+*   *Note: Global Node.js/NPM is **not** required. A fully isolated, standalone Node.js environment is automatically downloaded and configured locally inside `bin/node/` by the setup script.*
 
 #### Step-by-Step Build Instructions
 
@@ -73,15 +73,17 @@ If you are cloning this repository from GitHub to customize, develop, or compile
     ```
 
 2.  **Bootstrap the Isolated Environment**:
-    Run our automated initialization script to download Micromamba, configure isolated paths, download static FFmpeg binaries, and build the conda-forge dependencies:
+    Run our automated initialization script to download isolated Node.js, Micromamba, static FFmpeg binaries, and build the conda-forge dependencies:
     ```bash
     chmod +x setup.sh
     ./setup.sh
     ```
-    *This installs fastapi, uvicorn, pydantic, numpy, soundfile, librosa, and pillow inside the local directory.*
+    *This downloads isolated Node.js, Micromamba, FFmpeg, and installs fastapi, uvicorn, pydantic, numpy, soundfile, librosa, and pillow locally.*
 
-3.  **Install Frontend Packages**:
+3.  **Activate Local Environment Paths & Install Frontend Packages**:
+    We export the path to the newly downloaded isolated Node.js binary and install the node dependencies:
     ```bash
+    export PATH="$PWD/bin/node/bin:$PATH"
     npm install
     ```
 
