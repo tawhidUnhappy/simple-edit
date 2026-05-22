@@ -49,7 +49,7 @@ Our Rust-based compilation engine (`compiler.rs`) parses multi-layered tracks (v
 ### 🚀 For End-Users (Zero Dependencies / Standalone Mode)
 If you simply want to run and use the video editor, **you do not need to install Rust, Node.js, CMake, or any system compilers.** Everything is packaged inside the compiled standalone executable:
 
-1. Go to the **[GitHub Releases]()** page of your repository.
+1. Go to the **[GitHub Releases](https://github.com/tawhidUnhappy/simple-edit/releases)** page of the repository.
 2. Download the pre-compiled package matching your operating system (e.g., `.AppImage`/`.deb` for Linux, `.dmg` for macOS, or `.msi` for Windows).
 3. Open the downloaded app. On first boot, the app will automatically bootstrap its isolated `micromamba` runtime, download the static `ffmpeg` binaries, and set up all fallback features locally inside your app's directory.
 4. **Enjoy a fully isolated, zero-config GPU-accelerated video editing experience!**
@@ -68,7 +68,7 @@ If you are cloning this repository from GitHub to customize, develop, or compile
 
 1.  **Clone the Repository**:
     ```bash
-    git clone https://github.com/yourusername/simple-edit.git
+    git clone https://github.com/tawhidUnhappy/simple-edit.git
     cd simple-edit
     ```
 
