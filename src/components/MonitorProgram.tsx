@@ -38,12 +38,23 @@ export const MonitorProgram: React.FC = () => {
     }
   }, [playhead, tracks, activeClip]);
 
-  // 2. Play / Pause effect
+  // 2a. Force unmute whenever the source changes — React's muted={false} prop
+  // does not remove the HTML muted attribute from the DOM, so the video stays
+  // silent. Setting the property directly on the element is the only reliable fix.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = false;
+    video.volume = 1.0;
+  }, [videoSrc]);
+
+  // 2b. Play / Pause effect
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     if (isPlaying) {
+      video.muted = false;
       video.play().catch((e) => {
         console.warn("Autoplay / play blocked or failed: ", e);
       });
@@ -144,7 +155,6 @@ export const MonitorProgram: React.FC = () => {
             src={videoSrc}
             className="video-element"
             preload="auto"
-            muted={false}
             onError={(e) => {
               console.error("Video error:", e);
               setErrorText("Failed to load video asset. Ensure proxy is ready.");
