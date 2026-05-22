@@ -42,14 +42,29 @@ Our Rust-based compilation engine (`compiler.rs`) parses multi-layered tracks (v
 
 ---
 
-## 📦 Installation Guide
+## 📦 Installation & Getting Started
 
-### Prerequisites
-*   **Rust / Cargo**: Install standard Rust compiler tools (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`).
-*   **Node.js**: Node version 18 or above.
-*   **System Tools**: `build-essential`, `cmake`, and `curl` for initial builds.
+`simple-edit` offers two ways to get started, depending on whether you want to run the pre-built standalone application or build it from source.
 
-### Step-by-Step Installation
+### 🚀 For End-Users (Zero Dependencies / Standalone Mode)
+If you simply want to run and use the video editor, **you do not need to install Rust, Node.js, CMake, or any system compilers.** Everything is packaged inside the compiled standalone executable:
+
+1. Go to the **[GitHub Releases]()** page of your repository.
+2. Download the pre-compiled package matching your operating system (e.g., `.AppImage`/`.deb` for Linux, `.dmg` for macOS, or `.msi` for Windows).
+3. Open the downloaded app. On first boot, the app will automatically bootstrap its isolated `micromamba` runtime, download the static `ffmpeg` binaries, and set up all fallback features locally inside your app's directory.
+4. **Enjoy a fully isolated, zero-config GPU-accelerated video editing experience!**
+
+---
+
+### 💻 For Developers & Building from Source
+If you are cloning this repository from GitHub to customize, develop, or compile the source code yourself, you will need the build-time tools:
+
+#### Prerequisites
+*   **Rust & Cargo**: Required to compile the Tauri backend (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`).
+*   **Node.js (v18+)**: Required to build the React TypeScript frontend.
+*   **System Tools**: `build-essential`, `cmake`, and `curl` (for compiling native whisper.cpp/stable-diffusion C++ engines).
+
+#### Step-by-Step Build Instructions
 
 1.  **Clone the Repository**:
     ```bash
@@ -63,10 +78,10 @@ Our Rust-based compilation engine (`compiler.rs`) parses multi-layered tracks (v
     chmod +x setup.sh
     ./setup.sh
     ```
-    *This installs uvicorn, torch, torchaudio, demucs, diffusers, transformers, accelerate, and librosa inside the local directory.*
+    *This installs fastapi, uvicorn, pydantic, numpy, soundfile, librosa, and pillow inside the local directory.*
 
 3.  **Install Frontend Packages**:
-    ```npm
+    ```bash
     npm install
     ```
 
@@ -76,7 +91,12 @@ Our Rust-based compilation engine (`compiler.rs`) parses multi-layered tracks (v
     ```
     *Tauri will dynamically allocate a free socket port for the FastAPI server daemon, boot the Python service inside micromamba, run the React UI, and establish health-checks.*
 
----
+5.  **Compile a Standalone Release**:
+    To compile your own production standalone executable package:
+    ```bash
+    npm run tauri build
+    ```
+    *This generates native platform packages (AppImage/dmg/msi) inside `src-tauri/target/release/bundle/` that can be run on any machine with zero prerequisites.*
 
 ## 🎮 How to Use
 
