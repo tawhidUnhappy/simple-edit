@@ -33,7 +33,7 @@ function App() {
 
   // --- Export Modal & Compilation State ---
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [exportPath, setExportPath] = useState("/run/media/yuzuki/Evil/simple-edit/temp/export.mp4");
+  const [exportPath, setExportPath] = useState("temp/export.mp4");
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportStatus, setExportStatus] = useState("");

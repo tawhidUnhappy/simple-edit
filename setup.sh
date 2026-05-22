@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-WORKSPACE="/run/media/yuzuki/Evil/simple-edit"
+WORKSPACE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "=== Starting simple-edit Setup ==="
 echo "Workspace: $WORKSPACE"
 
@@ -51,11 +51,11 @@ fi
 
 echo "Micromamba version: $("$WORKSPACE/bin/micromamba" --version)"
 
-# 4. Create isolated Conda Environment and install python + ffmpeg
+# 4. Create isolated Conda Environment and install python + ffmpeg + server dependencies
 if [ ! -d "$WORKSPACE/conda_env" ]; then
     echo "Initializing Conda Environment inside ./conda_env..."
-    # We install python=3.10 and ffmpeg via conda-forge (which includes ffprobe)
-    "$WORKSPACE/bin/micromamba" create -p "$WORKSPACE/conda_env" python=3.10 ffmpeg -c conda-forge --yes
+    # We install python=3.10, ffmpeg, fastapi, uvicorn, pydantic, numpy, soundfile, librosa, and pillow via conda-forge
+    "$WORKSPACE/bin/micromamba" create -p "$WORKSPACE/conda_env" python=3.10 ffmpeg fastapi uvicorn pydantic numpy soundfile librosa pillow -c conda-forge --yes
     echo "Conda environment created successfully."
 else
     echo "Conda environment already exists in ./conda_env"
