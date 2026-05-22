@@ -64,6 +64,10 @@ If you are cloning this repository from GitHub to customize, develop, or compile
 *   **System Tools**: `build-essential`, `cmake`, and `curl` (required for bootstrapping and compiling native whisper.cpp/stable-diffusion C++ engines).
 *   *Note: Global Node.js/NPM is **not** required. A fully isolated, standalone Node.js environment is automatically downloaded and configured locally inside `bin/node/` by the setup script.*
 
+> [!NOTE]
+> **Why is Rust/Cargo the only global prerequisite?**
+> Unlike Python, Node.js, and FFmpeg (which are fully interpreted/scripted and downloaded locally into sandboxed folders by `setup.sh`), Rust is a compiled systems-level language. It compiles the Tauri application's native backend into high-performance machine code and must link directly to your operating system's native graphical window manager (e.g., WebKit2GTK and GTK3 on Linux). This native bridge requires a host-level compiler and linker headers. However, once compiled, the resulting finished executable package contains everything pre-linked, meaning **end-users need absolutely zero runtime dependencies or prerequisites!**
+
 #### Step-by-Step Build Instructions
 
 1.  **Clone the Repository**:
