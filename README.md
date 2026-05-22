@@ -96,7 +96,7 @@ Our Rust-based compilation engine (`compiler.rs`) parses multi-layered tracks (v
 
 ### 4. Compilation & Export
 *   Click **Export Video** in the top navigation bar.
-*   Specify your target output absolute path (e.g., `/your/drive/export.mp4`).
+*   Specify your target output path (e.g., the default dynamic relative path `temp/export.mp4` or a custom absolute path).
 *   Click **Start Compile** to watch the progress modal stream active frame percentages and compression details directly from our FFmpeg compiler threads.
 
 ---
