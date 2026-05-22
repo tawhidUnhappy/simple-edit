@@ -1,5 +1,4 @@
 use serde::{Serialize, Deserialize};
-use std::path::Path;
 use std::process::Command;
 use tokio::sync::mpsc;
 use tauri::{AppHandle, Emitter};
@@ -124,7 +123,7 @@ pub async fn run_ffmpeg_export(
     
     // Label for current video and audio streams
     let mut current_video_label = "0:v".to_string();
-    let mut current_audio_label = "1:a".to_string();
+    let current_audio_label = "1:a".to_string();
 
     // Process Video clips
     for (idx, clip) in video_clips.iter().enumerate() {
@@ -182,8 +181,6 @@ pub async fn run_ffmpeg_export(
         let label_a_trimmed = format!("a_trim_{}", idx);
         let label_a_delayed = format!("a_delay_{}", idx);
 
-        let speed_factor = 1.0 / clip.speed;
-        
         // Trim, change speed via atempo (note: atempo only supports 0.5 to 2.0. If outside, we chain or default)
         let atempo_filter = if clip.speed == 1.0 {
             "".to_string()

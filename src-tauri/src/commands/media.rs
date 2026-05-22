@@ -51,9 +51,6 @@ pub async fn import_media_file(
     let clip_id = Uuid::new_v4().to_string();
 
     // 4. Spawn background tasks for proxy, waveform, and thumbnails
-    let file_path_clone = file_path.clone();
-    let clip_id_clone = clip_id.clone();
-    let app_clone = app.clone();
 
     // Spawn proxy transcoder
     generate_proxy_in_background(app.clone(), clip_id.clone(), file_path.clone()).await;

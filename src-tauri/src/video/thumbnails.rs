@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use tokio::process::Command;
 use tauri::{AppHandle, Emitter};
 use serde::Serialize;
