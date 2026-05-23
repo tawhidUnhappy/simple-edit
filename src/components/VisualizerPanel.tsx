@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTimelineStore } from "../store/timelineStore";
+import { getAnalyser } from "../lib/audioContext";
 import { Music, Zap, Settings, Activity, Loader2 } from "lucide-react";
 
 export const VisualizerPanel: React.FC = () => {
@@ -73,12 +74,13 @@ export const VisualizerPanel: React.FC = () => {
     if (!ctx) return;
 
     let frame = 0;
+    const freqBuf = new Uint8Array(128); // matches fftSize=256 → 128 bins
 
     const draw = () => {
       frame++;
       const w = canvas.width;
       const h = canvas.height;
-      
+
       // Clear canvas with deep space dark tone
       ctx.fillStyle = "rgba(10, 12, 16, 0.2)"; // trailing motion blur
       ctx.fillRect(0, 0, w, h);
@@ -88,13 +90,20 @@ export const VisualizerPanel: React.FC = () => {
       const playhead = state.playhead;
       const isPlaying = state.isPlaying;
 
-      // Generate dynamic visualizer frequencies
+      // Build frequency array — prefer live analyser, fall back to librosa data, then procedural
       let frequencies: number[] = [];
       const numBars = 48;
-      
-      if (analysisData) {
+
+      const analyser = getAnalyser();
+      if (analyser && isPlaying) {
+        analyser.getByteFrequencyData(freqBuf);
+        const step = Math.floor(freqBuf.length / numBars);
+        for (let i = 0; i < numBars; i++) {
+          frequencies.push(freqBuf[i * step] / 255);
+        }
+      } else if (analysisData) {
         // Map analysis step index to playhead if playing, otherwise advance frame procedurally
-        const stepIndex = isPlaying 
+        const stepIndex = isPlaying
           ? Math.floor(playhead * 10) % (analysisData.bass.length || 100)
           : frame % (analysisData.bass.length || 100);
 
@@ -102,16 +111,12 @@ export const VisualizerPanel: React.FC = () => {
         const midsVal = analysisData.mids[stepIndex] || 0.1;
         const trebleVal = analysisData.treble[stepIndex] || 0.1;
 
-        // Populate mock frequencies centered around librosa real bands
         for (let i = 0; i < numBars; i++) {
           if (i < 12) {
-            // Bass band
             frequencies.push(bassVal * (1.0 + 0.3 * Math.sin(frame * 0.1 + i)));
           } else if (i < 36) {
-            // Mids band
             frequencies.push(midsVal * (1.0 + 0.2 * Math.sin(frame * 0.08 + i)));
           } else {
-            // Treble band
             frequencies.push(trebleVal * (1.0 + 0.4 * Math.sin(frame * 0.15 + i)));
           }
         }

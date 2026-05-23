@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { Clip } from "../store/timelineStore";
+import { connectAudioElement } from "./audioContext";
 
 export function useAudioPool(
   clips: Clip[],
@@ -60,6 +61,7 @@ export function useAudioPool(
     el.volume = isMuted ? 0 : (clip.volume ?? 1.0);
     el.playbackRate = clip.speed;
 
+    connectAudioElement(el); // route through shared AudioContext → AnalyserNode
     if (Math.abs(el.currentTime - targetTime) > 0.1) el.currentTime = targetTime;
     el.play().catch(() => {});
     return true;

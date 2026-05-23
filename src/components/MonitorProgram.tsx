@@ -3,6 +3,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { useTimelineStore, Clip } from "../store/timelineStore";
 import { playheadBus } from "../lib/playheadBus";
 import { useAudioPool } from "../lib/useAudioPool";
+import { resumeContext } from "../lib/audioContext";
 import { Play, Pause, SkipBack, SkipForward, Volume2, Maximize2 } from "lucide-react";
 
 interface LyricLine { time: number; text: string; }
@@ -311,6 +312,7 @@ const MonitorProgramComponent: React.FC = () => {
   // ── Controls ───────────────────────────────────────────────────────────────
   const handleTogglePlay = () => {
     const next = !isPlaying;
+    if (next) resumeContext(); // unblock AudioContext before playback
     setIsPlaying(next);
     window.dispatchEvent(new CustomEvent("playback-toggle", { detail: next }));
     // Actual media start/stop is handled by the isPlaying effect
