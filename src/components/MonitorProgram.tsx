@@ -170,18 +170,28 @@ const MonitorProgramComponent: React.FC = () => {
   useEffect(() => {
     const video = videoRef.current;
     if (isPlaying) {
-      // Video
+      // Video — seek first, play after seek settles to avoid frame-zero flash
       if (video && videoSrc && activeClipRef.current?.type === "video") {
         const ac = activeClipRef.current;
         const lt = (playheadRef.current - ac.timeStart) * ac.speed + ac.startOffset;
-        safeSetTime(video, lt);
         const vTrack = tracks.find((t) => t.type === "video");
+        video.playbackRate = ac.speed;
         video.muted = vTrack?.muted || false;
         video.volume = video.muted ? 0 : 1.0;
         videoPlayingRef.current = ac.id;
-        video.play().catch(() => { videoPlayingRef.current = null; });
+        safeSetTime(video, lt);
+        let played = false;
+        const doPlay = () => {
+          if (played) return;
+          played = true;
+          video.removeEventListener("seeked", doPlay);
+          if (isPlayingRef.current) video.play().catch(() => { videoPlayingRef.current = null; });
+        };
+        video.addEventListener("seeked", doPlay);
+        // Fallback: play after 200ms even if seeked never fires
+        setTimeout(doPlay, 200);
       }
-      // Audio via Web Audio API
+      // Audio
       audioClips.forEach((clip) => webAudio.playClip(clip, playheadRef.current));
     } else {
       if (video) video.pause();
@@ -197,7 +207,7 @@ const MonitorProgramComponent: React.FC = () => {
       return;
     }
 
-    playStartRef.current = { wallTime: Date.now(), playhead: playheadRef.current };
+    playStartRef.current = { wallTime: performance.now(), playhead: playheadRef.current };
     frameBudgetRef.current = [];
     let frameCounter = 0;
     let lastFrameTime = performance.now();
@@ -209,10 +219,10 @@ const MonitorProgramComponent: React.FC = () => {
       lastFrameTime = now;
       if (dt > 0 && dt < 5000) {
         frameBudgetRef.current.push(dt);
-        if (frameBudgetRef.current.length > 10) frameBudgetRef.current.shift();
-        if (frameBudgetRef.current.length >= 10) {
-          const avg = frameBudgetRef.current.reduce((a, b) => a + b, 0) / 10;
-          if (avg > 80) {
+        if (frameBudgetRef.current.length > 15) frameBudgetRef.current.shift();
+        if (frameBudgetRef.current.length >= 15) {
+          const avg = frameBudgetRef.current.reduce((a, b) => a + b, 0) / 15;
+          if (avg > 120) {
             console.warn(`[auto-pause] avg ${avg.toFixed(0)}ms`);
             setIsPlaying(false);
             window.dispatchEvent(new CustomEvent("playback-toggle", { detail: false }));
@@ -224,7 +234,7 @@ const MonitorProgramComponent: React.FC = () => {
       const state = useTimelineStore.getState();
       const start = playStartRef.current;
       if (!start) return;
-      const next = start.playhead + (Date.now() - start.wallTime) / 1000;
+      const next = start.playhead + (performance.now() - start.wallTime) / 1000;
 
       if (state.timelineDuration > 0 && next >= state.timelineDuration) {
         playheadBus.emit(state.timelineDuration);
@@ -257,7 +267,11 @@ const MonitorProgramComponent: React.FC = () => {
           safeSetTime(video, target);
           videoPlayingRef.current = activeCl.id;
           video.play().catch(() => { videoPlayingRef.current = null; });
-        } else if (Math.abs(video.currentTime - target) > 0.04) {
+        } else if (
+          frameCounter % 30 === 0 &&
+          now - start.wallTime > 500 &&
+          Math.abs(video.currentTime - target) > 0.3
+        ) {
           safeSetTime(video, target);
         }
       } else if (videoPlayingRef.current !== null) {
@@ -298,18 +312,8 @@ const MonitorProgramComponent: React.FC = () => {
   const handleTogglePlay = () => {
     const next = !isPlaying;
     setIsPlaying(next);
-    if (next) {
-      const video = videoRef.current;
-      if (video && videoSrc && activeClip?.type === "video") {
-        const lt = (playheadRef.current - activeClip.timeStart) * activeClip.speed + activeClip.startOffset;
-        video.playbackRate = activeClip.speed;
-        safeSetTime(video, lt);
-        video.muted = false; video.volume = 1.0;
-        video.play().catch(() => {});
-      }
-      audioClips.forEach((clip) => webAudio.playClip(clip, playheadRef.current));
-    }
     window.dispatchEvent(new CustomEvent("playback-toggle", { detail: next }));
+    // Actual media start/stop is handled by the isPlaying effect
   };
 
   const handleSkipStart = () => {
