@@ -48,7 +48,6 @@ function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showEditMenu, setShowEditMenu] = useState(false);
-  const [showExitDialog, setShowExitDialog] = useState(false);
   const [showCloseProjectDialog, setShowCloseProjectDialog] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editNameValue, setEditNameValue] = useState(projectName);
@@ -201,12 +200,9 @@ function App() {
     (async () => {
       const fn = await win.onCloseRequested(async (event) => {
         if (hasOpenProjectRef.current) {
+          // Never close the window from the editor; go back to the projects page instead
           event.preventDefault();
-          if (isDirtyRef.current) {
-            setShowExitDialog(true);
-          } else {
-            await win.destroy();
-          }
+          handleCloseProjectRef.current();
         } else {
           await win.destroy();
         }
@@ -890,53 +886,6 @@ function App() {
         </div>
       )}
 
-      {/* Unsaved-changes exit dialog */}
-      {showExitDialog && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(6,8,12,0.8)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10002 }}>
-          <div style={{ background: "rgba(18, 22, 33, 0.95)", border: "1px solid var(--border-normal)", borderRadius: "12px", padding: "24px", width: "360px", boxShadow: "0 10px 40px rgba(0,0,0,0.8)", display: "flex", flexDirection: "column", gap: "16px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <AlertTriangle size={20} style={{ color: "var(--text-bright)", flexShrink: 0 }} />
-              <div>
-                <div style={{ fontSize: "13px", fontWeight: 700 }}>Unsaved Changes</div>
-                <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "3px" }}>
-                  "{projectName}" has unsaved changes. What would you like to do?
-                </div>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-              <button
-                className="btn-secondary"
-                style={{ fontSize: "11px", padding: "6px 14px" }}
-                onClick={() => setShowExitDialog(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn-secondary"
-                style={{ fontSize: "11px", padding: "6px 14px" }}
-                onClick={() => {
-                  setShowExitDialog(false);
-                  getCurrentWindow().destroy();
-                }}
-              >
-                Discard
-              </button>
-              <button
-                className="btn-primary"
-                style={{ fontSize: "11px", padding: "6px 16px" }}
-                onClick={async () => {
-                  setShowExitDialog(false);
-                  await handleSaveProject();
-                  getCurrentWindow().destroy();
-                }}
-              >
-                Save &amp; Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Unsaved-changes close project dialog */}
       {showCloseProjectDialog && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(6,8,12,0.8)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10002 }}>
@@ -946,7 +895,7 @@ function App() {
               <div>
                 <div style={{ fontSize: "13px", fontWeight: 700 }}>Unsaved Changes</div>
                 <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "3px" }}>
-                  "{projectName}" has unsaved changes. What would you like to do?
+                  "{projectName}" has unsaved changes. Save before returning to the projects page?
                 </div>
               </div>
             </div>

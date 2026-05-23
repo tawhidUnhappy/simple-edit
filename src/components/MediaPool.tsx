@@ -363,16 +363,18 @@ export const MediaPool: React.FC = () => {
               position: "relative"
             }}>
               {(() => {
-                const ext = (previewMedia.filePath as string).split(".").pop()?.toLowerCase() ?? "";
+                // Always use the live store item so proxyPath is current after background task finishes
+                const live = mediaPool.find((m) => m.id === previewMedia.id) ?? previewMedia;
+                const ext = (live.filePath as string).split(".").pop()?.toLowerCase() ?? "";
                 const isImg = IMAGE_EXTENSIONS.has(ext);
-                const isAud = !isImg && !previewMedia.width && !previewMedia.height && previewMedia.hasAudio;
-                
+                const isAud = !isImg && !live.width && !live.height && live.hasAudio;
+
                 if (isImg) {
                   return (
-                    <img 
-                      src={convertFileSrc(previewMedia.filePath)} 
-                      alt="" 
-                      style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} 
+                    <img
+                      src={convertFileSrc(live.filePath)}
+                      alt=""
+                      style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
                     />
                   );
                 } else if (isAud) {
@@ -391,22 +393,23 @@ export const MediaPool: React.FC = () => {
                       }}>
                         <Music size={24} style={{ color: "var(--text-muted)" }} />
                       </div>
-                      <audio 
-                        src={convertFileSrc(previewMedia.filePath)} 
-                        controls 
-                        autoPlay 
-                        style={{ width: "280px" }} 
+                      <audio
+                        key={live.filePath}
+                        src={convertFileSrc(live.filePath)}
+                        controls
+                        style={{ width: "280px" }}
                       />
                     </div>
                   );
                 } else {
-                  // Video File
+                  // Prefer proxy (VP8/WebM — WebKit2GTK native) over original which may need extra GStreamer codecs
+                  const videoSrc = live.proxyPath ? convertFileSrc(live.proxyPath) : convertFileSrc(live.filePath);
                   return (
-                    <video 
-                      src={convertFileSrc(previewMedia.filePath)} 
-                      controls 
-                      autoPlay 
-                      style={{ width: "100%", height: "100%", objectFit: "contain" }} 
+                    <video
+                      key={videoSrc}
+                      src={videoSrc}
+                      controls
+                      style={{ width: "100%", height: "100%", objectFit: "contain" }}
                     />
                   );
                 }

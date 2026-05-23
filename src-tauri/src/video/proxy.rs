@@ -35,7 +35,8 @@ pub async fn generate_proxy_in_background(
             return;
         }
 
-        let output_filename = format!("{}.mp4", clip_id_clone);
+        // WebM/VP8 is decoded natively by WebKit2GTK without extra GStreamer plugins
+        let output_filename = format!("{}.webm", clip_id_clone);
         let output_path = proxies_dir.join(&output_filename);
         let absolute_output_path = output_path.to_string_lossy().to_string();
 
@@ -47,17 +48,18 @@ pub async fn generate_proxy_in_background(
             error: None,
         });
 
-        // Run isolated FFmpeg proxy downscaler command (Fast H264, 480p)
+        // VP8 realtime: fast encode, universally playable in WebKit2GTK
         let output = Command::new(&ffmpeg_path)
             .args(&[
-                "-y", // overwrite existing
+                "-y",
                 "-i", &input_file_path,
                 "-vf", "scale=-2:480",
-                "-c:v", "libx264",
-                "-preset", "superfast",
-                "-crf", "28",
-                "-c:a", "aac",
-                "-b:a", "96k",
+                "-c:v", "libvpx",
+                "-b:v", "1500k",
+                "-deadline", "realtime",
+                "-cpu-used", "8",
+                "-c:a", "libvorbis",
+                "-b:a", "64k",
                 output_path.to_str().unwrap_or(""),
             ])
             .output()
