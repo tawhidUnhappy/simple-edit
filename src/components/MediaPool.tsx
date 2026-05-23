@@ -233,7 +233,11 @@ export const MediaPool: React.FC = () => {
               // Images and audio-only files don't need proxy/thumbnails from Rust
               const isProcessing = (isVideoFile && (!media.proxyPath || !media.thumbnailPath)) ||
                                    (isAudioFile && !media.waveformPath);
-              const thumbSrc = media.thumbnailPath ? convertFileSrc(media.thumbnailPath!) : null;
+              const thumbSrc = media.thumbnailPath
+                ? convertFileSrc(media.thumbnailPath!)
+                : isImageFile
+                  ? convertFileSrc(media.filePath)
+                  : null;
 
               const PlaceholderIcon = isImageFile ? Image : isAudioFile ? Music : Film;
 

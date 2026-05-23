@@ -573,32 +573,6 @@ function App() {
             {projectPath ? "Save" : "Save As…"}
           </button>
 
-          {/* Close Project */}
-          <button
-            onClick={handleCloseProject}
-            className="btn-secondary"
-            style={{ 
-              padding: "4px 8px", 
-              fontSize: "11px", 
-              display: "flex", 
-              alignItems: "center", 
-              gap: "4px",
-              color: "#ef4444",
-              borderColor: "rgba(239, 68, 68, 0.2)"
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(239, 68, 68, 0.15)";
-              e.currentTarget.style.color = "#f87171";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "none";
-              e.currentTarget.style.color = "#ef4444";
-            }}
-            title="Close Project (X)"
-          >
-            <X size={12} />
-            <span>Close</span>
-          </button>
 
           {/* Export Video Action Button */}
           <button
