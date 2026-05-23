@@ -27,12 +27,15 @@ function drawTrack(
   selectedId: string | null,
   isLocked: boolean,
   ds: DrawState,
+  logicalW: number,
+  logicalH: number,
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  const W = canvas.width;
-  const H = canvas.height;
-  ctx.clearRect(0, 0, W, H);
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, logicalW, logicalH);
+  const H = logicalH;
 
   for (let ci = 0; ci < clips.length; ci++) {
     const clip = clips[ci];
@@ -102,12 +105,12 @@ function drawTrack(
     ctx.save();
     ctx.globalAlpha = 0.18;
     ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, logicalW, logicalH);
     ctx.globalAlpha = 0.12;
     ctx.strokeStyle = "#fff";
     ctx.lineWidth = 8;
-    for (let i = -H; i < W + H; i += 18) {
-      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + H, H); ctx.stroke();
+    for (let i = -logicalH; i < logicalW + logicalH; i += 18) {
+      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + logicalH, logicalH); ctx.stroke();
     }
     ctx.restore();
   }
@@ -240,15 +243,20 @@ const TimelineComponent: React.FC = () => {
   };
 
   useEffect(() => {
-    const contentWidth = Math.max(
+    const dpr = window.devicePixelRatio || 1;
+    const logicalW = Math.max(
       scrollAreaRef.current?.clientWidth || 800,
       timelineDuration * zoom + 600,
     );
     tracks.forEach((track) => {
       const canvas = trackCanvasRefs.current.get(track.id);
       if (!canvas) return;
-      canvas.width = contentWidth;
-      drawTrack(canvas, track.clips, zoom, selectedClipId, !!track.locked, drawState);
+      const logicalH = track.type === "audio" ? 64 : 72;
+      canvas.width = Math.round(logicalW * dpr);
+      canvas.height = Math.round(logicalH * dpr);
+      canvas.style.width = logicalW + "px";
+      canvas.style.height = logicalH + "px";
+      drawTrack(canvas, track.clips, zoom, selectedClipId, !!track.locked, drawState, logicalW, logicalH);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tracks, zoom, selectedClipId, draggedClip, resizeState, timelineDuration]);
@@ -259,8 +267,13 @@ const TimelineComponent: React.FC = () => {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
     const w = Math.max(scrollAreaRef.current?.clientWidth || 800, timelineDuration * zoom + 300);
-    canvas.width = w; canvas.height = 28;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(28 * dpr);
+    canvas.style.width = w + "px";
+    canvas.style.height = "28px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "var(--bg-panel)";
     ctx.fillRect(0, 0, w, 28);
     ctx.strokeStyle = "var(--border-normal)"; ctx.lineWidth = 1;
@@ -445,7 +458,8 @@ const TimelineComponent: React.FC = () => {
     if (track.locked) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     const rect = e.currentTarget.getBoundingClientRect();
-    const canvasX = e.clientX - rect.left + (scrollAreaRef.current?.scrollLeft || 0);
+    // getBoundingClientRect already accounts for scroll — do NOT add scrollLeft again
+    const canvasX = e.clientX - rect.left;
     const hit = hitTest(canvasX, track.clips, zoomRef.current);
     if (!hit) { setSelectedClipId(null); return; }
     setSelectedClipId(hit.clip.id);
@@ -464,7 +478,7 @@ const TimelineComponent: React.FC = () => {
   const handleCanvasHover = useCallback((e: React.PointerEvent<HTMLCanvasElement>, track: Track) => {
     if (draggedClip || resizeState) return; // parent container cursor takes over
     const rect = e.currentTarget.getBoundingClientRect();
-    const canvasX = e.clientX - rect.left + (scrollAreaRef.current?.scrollLeft || 0);
+    const canvasX = e.clientX - rect.left; // rect already accounts for scroll
     const hit = hitTest(canvasX, track.clips, zoomRef.current);
     e.currentTarget.style.cursor = hit ? (hit.edge !== "body" ? "ew-resize" : "grab") : "default";
   }, [draggedClip, resizeState]);
@@ -605,8 +619,7 @@ const TimelineComponent: React.FC = () => {
               const isMuted = !!track.muted;
               const isHidden = !!track.hidden;
               const isLocked = !!track.locked;
-              const canvasW = Math.max(scrollAreaRef.current?.clientWidth || 800, timelineDuration * zoom + 600);
-              const canvasH = track.type === "audio" ? 52 : 64;
+              // Canvas dimensions are set imperatively in the draw effect (with DPR scaling)
 
               return (
                 <div key={track.id} className={`track-row ${track.type}`}
@@ -638,8 +651,6 @@ const TimelineComponent: React.FC = () => {
                       if (el) { trackCanvasRefs.current.set(track.id, el); }
                       else { trackCanvasRefs.current.delete(track.id); }
                     }}
-                    width={canvasW}
-                    height={canvasH}
                     style={{ display: "block", touchAction: "none" }}
                     onPointerDown={(e) => handleCanvasPointerDown(e, track)}
                     onPointerMove={(e) => handleCanvasHover(e, track)}
@@ -651,7 +662,7 @@ const TimelineComponent: React.FC = () => {
                         const media = JSON.parse(e.dataTransfer.getData("application/json"));
                         if (!media) return;
                         const rect = e.currentTarget.getBoundingClientRect();
-                        const dropTime = Math.max(0, (e.clientX - rect.left + (scrollAreaRef.current?.scrollLeft || 0)) / zoom);
+                        const dropTime = Math.max(0, (e.clientX - rect.left) / zoom);
                         const ext = (media.filePath as string).split(".").pop()?.toLowerCase() ?? "";
                         const isImage = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(ext);
                         const isAudio = !media.width && !media.height && !isImage;
