@@ -196,7 +196,7 @@ export const ModelManager: React.FC = () => {
                 <span className="item-title" style={{ maxWidth: "70%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {dl.filename}
                 </span>
-                <span className="item-meta" style={{ color: dl.status === "failed" ? "var(--accent-rose)" : dl.status === "completed" ? "var(--accent-teal)" : "var(--accent-primary)" }}>
+                <span className="item-meta" style={{ color: "var(--text-bright)" }}>
                   {dl.status.toUpperCase()}
                 </span>
               </div>
@@ -226,14 +226,14 @@ export const ModelManager: React.FC = () => {
                       <Play size={12} /> Resume
                     </button>
                   )}
-                  <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "11px", color: "var(--accent-rose)" }} onClick={() => cancelDownload(dl.task_id as string)}>
+                  <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "11px", color: "var(--text-normal)" }} onClick={() => cancelDownload(dl.task_id as string)}>
                     <X size={12} /> Cancel
                   </button>
                 </div>
               )}
 
               {dl.error && (
-                <div className="item-meta" style={{ color: "var(--accent-rose)", marginTop: "4px", fontSize: "10px" }}>
+                <div className="item-meta" style={{ color: "var(--text-normal)", marginTop: "4px", fontSize: "10px" }}>
                   Error: {dl.error}
                 </div>
               )}

@@ -50,18 +50,31 @@ pub async fn import_media_file(
     // 3. Generate unique clip id
     let clip_id = Uuid::new_v4().to_string();
 
-    // 4. Spawn background tasks for proxy, waveform, and thumbnails
+    // 4. Detect file category by extension
+    let ext = path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    let is_image = matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg");
+    let is_video = !is_image && metadata.width.is_some();
+    let is_audio_only = !is_image && !is_video && metadata.has_audio;
 
-    // Spawn proxy transcoder
-    generate_proxy_in_background(app.clone(), clip_id.clone(), file_path.clone()).await;
+    // 5. Spawn appropriate background tasks based on file type
+    // Proxy: video files only (not images or audio-only)
+    if is_video {
+        generate_proxy_in_background(app.clone(), clip_id.clone(), file_path.clone()).await;
+    }
 
-    // Spawn waveform extractor if it contains audio
-    if metadata.has_audio {
+    // Waveform: audio-containing, non-image files
+    if metadata.has_audio && !is_image {
         generate_waveform_in_background(app.clone(), clip_id.clone(), file_path.clone()).await;
     }
 
-    // Spawn 1fps thumbnail frame cacher
-    generate_thumbnails_in_background(app.clone(), clip_id.clone(), file_path.clone()).await;
+    // Thumbnails: video files only
+    if is_video {
+        generate_thumbnails_in_background(app.clone(), clip_id.clone(), file_path.clone()).await;
+    }
+    let _ = is_audio_only; // suppress unused warning
 
     // Return the media item immediately (UI will update details once background tasks emit finish events)
     Ok(MediaFile {

@@ -1,23 +1,34 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTimelineStore } from "../store/timelineStore";
-import { Music, Zap, Settings, Activity, Sparkles, Loader2 } from "lucide-react";
+import { Music, Zap, Settings, Activity, Loader2 } from "lucide-react";
 
 export const VisualizerPanel: React.FC = () => {
-  const { mediaPool, tracks } = useTimelineStore();
+  const { mediaPool, lyricsText } = useTimelineStore();
   const [selectedAudioId, setSelectedAudioId] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisData, setAnalysisData] = useState<any | null>(null);
-  const [visualizerStyle, setVisualizerStyle] = useState<"bars" | "ring" | "spectrum">("bars");
-  const [glowIntensity, setGlowIntensity] = useState(15);
-  const [primaryColor, setPrimaryColor] = useState("#f43f5e"); // Neon Rose
-  const [secondaryColor, setSecondaryColor] = useState("#06b6d4"); // Neon Cyan
+  const [visualizerStyle, setVisualizerStyle] = useState<"bars" | "ring" | "spectrum" | "syrex">("bars");
+  const [glowIntensity, setGlowIntensity] = useState(0);
+  const [primaryColor, setPrimaryColor] = useState("#ffffff"); // Monochrome white
+  const [secondaryColor, setSecondaryColor] = useState("#555555"); // Monochrome slate grey
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  
+  const particlesRef = useRef<{ x: number; y: number; angle: number; speed: number; size: number; alpha: number }[]>([]);
+
+  // LRC Lyrics parsing helper
+  const parsedLyrics = useMemo(() => {
+    const lines: { time: number; text: string }[] = [];
+    for (const raw of (lyricsText || "").split("\n")) {
+      const m = raw.match(/^\[(\d{2}):(\d{2})[.:](\d{2,3})\](.*)/);
+      if (m) {
+        const t = parseInt(m[1]) * 60 + parseInt(m[2]) + parseInt(m[3]) / (m[3].length === 3 ? 1000 : 100);
+        lines.push({ time: t, text: m[4].trim() });
+      }
+    }
+    return lines.sort((a, b) => a.time - b.time);
+  }, [lyricsText]);
   // Filter audio files
   const audioFiles = mediaPool.filter((m) => m.hasAudio);
 
@@ -72,14 +83,21 @@ export const VisualizerPanel: React.FC = () => {
       ctx.fillStyle = "rgba(10, 12, 16, 0.2)"; // trailing motion blur
       ctx.fillRect(0, 0, w, h);
 
+      // Retrieve real-time playhead and playback status from Zustand store
+      const state = useTimelineStore.getState();
+      const playhead = state.playhead;
+      const isPlaying = state.isPlaying;
+
       // Generate dynamic visualizer frequencies
       let frequencies: number[] = [];
       const numBars = 48;
       
       if (analysisData) {
-        // Use beat-analysis frequencies mapped to time
-        // Calculate current audio offset based on frame frequency
-        const stepIndex = frame % (analysisData.bass.length || 100);
+        // Map analysis step index to playhead if playing, otherwise advance frame procedurally
+        const stepIndex = isPlaying 
+          ? Math.floor(playhead * 10) % (analysisData.bass.length || 100)
+          : frame % (analysisData.bass.length || 100);
+
         const bassVal = analysisData.bass[stepIndex] || 0.1;
         const midsVal = analysisData.mids[stepIndex] || 0.1;
         const trebleVal = analysisData.treble[stepIndex] || 0.1;
@@ -105,9 +123,8 @@ export const VisualizerPanel: React.FC = () => {
         }
       }
 
-      // Add Neon shadow styling
-      ctx.shadowBlur = glowIntensity;
-      ctx.shadowColor = primaryColor;
+      // No neon glows by default
+      ctx.shadowBlur = 0;
 
       if (visualizerStyle === "bars") {
         // 1. Neon Equalizer Bars
@@ -137,7 +154,7 @@ export const VisualizerPanel: React.FC = () => {
         const baseRadius = Math.min(w, h) * 0.22;
         
         // Dynamic scale from bass frequency
-        const bassVal = frequencies[0];
+        const bassVal = frequencies[0] || 0.1;
         const radGlow = baseRadius + (bassVal * 25);
 
         ctx.shadowColor = primaryColor;
@@ -169,7 +186,7 @@ export const VisualizerPanel: React.FC = () => {
         ctx.beginPath();
         ctx.arc(cx, cy, radGlow - 10, 0, Math.PI * 2);
         ctx.stroke();
-      } else {
+      } else if (visualizerStyle === "spectrum") {
         // 3. Neon Waveform Spectrum
         ctx.lineWidth = 4;
         ctx.beginPath();
@@ -188,6 +205,126 @@ export const VisualizerPanel: React.FC = () => {
           }
         }
         ctx.stroke();
+      } else if (visualizerStyle === "syrex") {
+        // 4. Premium Syrex-Style Lyric Video Visualizer
+        const cx = w / 2;
+        const cy = h / 2;
+        const bassVal = frequencies[0] || 0.1;
+
+        // Beat-reactive background scale zoom
+        const bgScale = 1.0 + bassVal * 0.04;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(bgScale, bgScale);
+        ctx.translate(-cx, -cy);
+
+        // Starfield dynamic particles system
+        if (particlesRef.current.length === 0) {
+          const parts = [];
+          for (let i = 0; i < 120; i++) {
+            parts.push({
+              x: Math.random() - 0.5,
+              y: Math.random() - 0.5,
+              angle: Math.random() * Math.PI * 2,
+              speed: 0.002 + Math.random() * 0.006,
+              size: 0.8 + Math.random() * 1.5,
+              alpha: 0.1 + Math.random() * 0.7,
+            });
+          }
+          particlesRef.current = parts;
+        }
+
+        ctx.fillStyle = primaryColor;
+        particlesRef.current.forEach((p) => {
+          p.x += Math.cos(p.angle) * p.speed * (1.0 + bassVal * 3);
+          p.y += Math.sin(p.angle) * p.speed * (1.0 + bassVal * 3);
+
+          // Reset if particle moves out of range
+          if (Math.abs(p.x) > 0.5 || Math.abs(p.y) > 0.5) {
+            p.x = (Math.random() - 0.5) * 0.1;
+            p.y = (Math.random() - 0.5) * 0.1;
+            p.angle = Math.random() * Math.PI * 2;
+          }
+
+          const px = cx + p.x * w;
+          const py = cy + p.y * h;
+          ctx.globalAlpha = p.alpha;
+          ctx.beginPath();
+          ctx.arc(px, py, p.size, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.globalAlpha = 1.0;
+
+        // Draw radial audio spectrum spokes
+        const baseRadius = Math.min(w, h) * 0.22;
+        const coreRadius = baseRadius * (1.0 + bassVal * 0.15);
+
+        ctx.strokeStyle = primaryColor;
+        ctx.lineWidth = 1.5;
+        const totalSpokes = 64;
+        for (let i = 0; i < totalSpokes; i++) {
+          const angle = (i / totalSpokes) * Math.PI * 2 + frame * 0.002;
+          const freqVal = frequencies[i % numBars] || 0.1;
+          const spokeLen = freqVal * 30;
+
+          const startX = cx + Math.cos(angle) * coreRadius;
+          const startY = cy + Math.sin(angle) * coreRadius;
+          const endX = cx + Math.cos(angle) * (coreRadius + spokeLen);
+          const endY = cy + Math.sin(angle) * (coreRadius + spokeLen);
+
+          ctx.beginPath();
+          ctx.moveTo(startX, startY);
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
+        }
+
+        // Draw outer pulsing circle ring
+        ctx.shadowColor = primaryColor;
+        ctx.shadowBlur = glowIntensity;
+        ctx.strokeStyle = primaryColor;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, coreRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0; // Reset shadows
+
+        // Draw inner rotating hexagon
+        ctx.strokeStyle = secondaryColor;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        const hexAngleOffset = frame * 0.015;
+        const hexRadius = coreRadius * 0.7;
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2 + hexAngleOffset;
+          const x = cx + Math.cos(angle) * hexRadius;
+          const y = cy + Math.sin(angle) * hexRadius;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.restore(); // Restore background scale translation
+
+        // Render current subtitle line at the bottom center of the visualizer canvas
+        const currentPlayhead = playhead;
+        let activeLine = "";
+        for (const l of parsedLyrics) {
+          if (l.time <= currentPlayhead) {
+            activeLine = l.text;
+          }
+        }
+
+        if (activeLine) {
+          ctx.save();
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 11px sans-serif";
+          ctx.textAlign = "center";
+          ctx.shadowBlur = 4;
+          ctx.shadowColor = "rgba(0, 0, 0, 0.9)";
+          ctx.fillText(activeLine, cx, h - 14);
+          ctx.restore();
+        }
       }
 
       // Reset shadows
@@ -203,12 +340,12 @@ export const VisualizerPanel: React.FC = () => {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [analysisData, visualizerStyle, glowIntensity, primaryColor, secondaryColor]);
+  }, [analysisData, visualizerStyle, glowIntensity, primaryColor, secondaryColor, parsedLyrics]);
 
   return (
     <div className="panel-content" style={{ display: "flex", flexDirection: "column", height: "100%", gap: "8px" }}>
       <label className="input-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-        <Activity size={13} style={{ color: "var(--accent-rose)" }} />
+        <Activity size={13} style={{ color: "var(--text-bright)" }} />
         Beat-Reactive Visualizer Panel
       </label>
 
@@ -218,7 +355,7 @@ export const VisualizerPanel: React.FC = () => {
         height: "160px",
         borderRadius: "8px",
         border: "1px solid var(--border-normal)",
-        background: "#080a0f",
+        background: "var(--bg-darker)",
         overflow: "hidden",
         boxShadow: "inset 0 4px 20px rgba(0,0,0,0.6)"
       }}>
@@ -229,8 +366,8 @@ export const VisualizerPanel: React.FC = () => {
             position: "absolute",
             top: "8px",
             right: "8px",
-            background: "rgba(244, 63, 94, 0.25)",
-            border: "1px solid var(--accent-rose)",
+            background: "var(--bg-darker)",
+            border: "1px solid var(--border-normal)",
             padding: "2px 6px",
             borderRadius: "4px",
             fontSize: "9px",
@@ -287,7 +424,7 @@ export const VisualizerPanel: React.FC = () => {
           </span>
 
           <div style={{ display: "flex", gap: "6px", margin: "4px 0" }}>
-            {["bars", "ring", "spectrum"].map((style) => (
+            {["bars", "ring", "spectrum", "syrex"].map((style) => (
               <button
                 key={style}
                 onClick={() => setVisualizerStyle(style as any)}
@@ -296,7 +433,7 @@ export const VisualizerPanel: React.FC = () => {
                   flex: 1,
                   fontSize: "10px",
                   padding: "4px 0",
-                  borderColor: visualizerStyle === style ? primaryColor : "var(--border-normal)",
+                  borderColor: visualizerStyle === style ? "var(--border-focus)" : "var(--border-normal)",
                   color: visualizerStyle === style ? "#fff" : "var(--text-muted)",
                 }}
               >

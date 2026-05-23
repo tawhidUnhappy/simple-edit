@@ -25,8 +25,14 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**", "**/conda_env/**"],
+      // 3. tell Vite to ignore watching `src-tauri` and large runtime folders
+      ignored: [
+        "**/src-tauri/**",
+        "**/conda_env/**",
+        "**/bin/**",
+        "**/models/**",
+        "**/temp/**"
+      ],
     },
   },
 }));

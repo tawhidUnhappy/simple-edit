@@ -103,19 +103,10 @@ pub async fn generate_waveform_in_background(
 }
 
 fn emit_error(app: AppHandle, clip_id: String, error_msg: String) {
-    let _ = app.emit("waveform-progress", ProxyProgress {
+    let _ = app.emit("waveform-progress", WaveformProgress {
         clip_id,
         status: "failed".to_string(),
-        proxy_path: None,
+        waveform_path: None,
         error: Some(error_msg),
     });
-}
-
-// Helper struct duplicate just for compile safety if required
-#[derive(Serialize, Clone, Debug)]
-struct ProxyProgress {
-    clip_id: String,
-    status: String,
-    proxy_path: Option<String>,
-    error: Option<String>,
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { GitBranch, RefreshCw, Terminal, CheckCircle, AlertTriangle } from "lucide-react";
+import { GitBranch, RefreshCw, Terminal } from "lucide-react";
 
 interface GitUpdateProgress {
   repo_name: string;
@@ -117,15 +117,12 @@ export const ToolUpdater: React.FC = () => {
           <div className="item-card" key={repo.name}>
             <div className="item-card-row">
               <span className="item-title" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <GitBranch size={14} style={{ color: "var(--accent-primary)" }} />
+                <GitBranch size={14} style={{ color: "var(--text-bright)" }} />
                 {repo.name}
               </span>
               
               <span className="item-meta" style={{
-                color: repo.status === "installed" ? "var(--accent-teal)" :
-                       repo.status === "updating" ? "var(--accent-orange)" :
-                       repo.status === "failed" ? "var(--accent-rose)" :
-                       "var(--text-muted)"
+                color: repo.status === "installed" ? "var(--text-bright)" : "var(--text-muted)"
               }}>
                 {repo.status.toUpperCase()}
               </span>
@@ -160,7 +157,7 @@ export const ToolUpdater: React.FC = () => {
       {activeRepoName && (
         <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px" }}>
           <label className="input-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <Terminal size={12} style={{ color: "var(--accent-teal)" }} />
+            <Terminal size={12} style={{ color: "var(--text-bright)" }} />
             Console Output Log: {activeRepoName}
           </label>
           <div className="terminal-output">

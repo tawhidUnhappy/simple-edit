@@ -4,3 +4,4 @@ pub mod updater;
 pub mod media;
 pub mod python_server;
 pub mod timeline;
+pub mod settings;

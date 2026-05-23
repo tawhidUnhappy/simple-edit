@@ -27,7 +27,7 @@ export const ClipInspector: React.FC = () => {
   const clip = selectedClip;
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    updateClipProperties(clip.id, { text: e.target.value, name: e.target.value });
+    updateClipProperties(clip.id, { text: e.target.value });
   };
 
   const handlePropertyChange = (property: string, value: any) => {
@@ -49,13 +49,13 @@ export const ClipInspector: React.FC = () => {
   return (
     <div className="panel-content" style={{ padding: "12px", gap: "14px", overflowY: "auto" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border-normal)", paddingBottom: "8px" }}>
-        <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--text-light)" }}>
+        <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--text-bright)" }}>
           Clip Inspector
         </span>
         <button 
           onClick={handleDelete}
           className="btn-secondary" 
-          style={{ padding: "3px 6px", fontSize: "10px", color: "var(--accent-rose)", borderColor: "rgba(244, 63, 94, 0.2)" }}
+          style={{ padding: "3px 6px", fontSize: "10px", color: "var(--text-normal)", borderColor: "var(--border-normal)" }}
         >
           <Trash2 size={10} /> Delete Clip
         </button>
@@ -152,14 +152,14 @@ export const ClipInspector: React.FC = () => {
       {clip.type === "subtitle" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "4px", borderTop: "1px solid var(--border-normal)", paddingTop: "12px" }}>
           <label className="input-label" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-            <Type size={11} style={{ color: "var(--accent-teal)" }} /> Text Caption
+            <Type size={11} style={{ color: "var(--text-bright)" }} /> Text Caption
           </label>
           <textarea
             value={clip.text || ""}
             onChange={handleTextChange}
             rows={3}
             placeholder="Edit subtitle text..."
-            style={{ fontSize: "11px", resize: "vertical", width: "100%", padding: "6px", backgroundColor: "#06080e", border: "1px solid var(--border-normal)", borderRadius: "4px", color: "var(--text-light)" }}
+            style={{ fontSize: "11px", resize: "vertical", width: "100%", padding: "6px", backgroundColor: "var(--bg-darker)", border: "1px solid var(--border-normal)", borderRadius: "4px", color: "var(--text-bright)" }}
           />
 
           <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
@@ -175,7 +175,7 @@ export const ClipInspector: React.FC = () => {
                   max="48"
                   value={fontSize}
                   onChange={(e) => handlePropertyChange("fontSize", parseInt(e.target.value))}
-                  style={{ flex: 1, accentColor: "var(--accent-teal)" }}
+                  style={{ flex: 1, accentColor: "var(--text-bright)" }}
                 />
                 <span style={{ width: "24px", textAlign: "right" }}>{fontSize}px</span>
               </div>
@@ -220,7 +220,7 @@ export const ClipInspector: React.FC = () => {
                   max="8"
                   value={strokeWidth}
                   onChange={(e) => handlePropertyChange("strokeWidth", parseInt(e.target.value))}
-                  style={{ flex: 1, accentColor: "var(--accent-teal)" }}
+                  style={{ flex: 1, accentColor: "var(--text-bright)" }}
                 />
                 <span style={{ width: "24px", textAlign: "right" }}>{strokeWidth}px</span>
               </div>

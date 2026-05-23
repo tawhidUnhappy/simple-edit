@@ -22,6 +22,9 @@ export interface Track {
   name: string;
   type: "video" | "audio" | "subtitle";
   clips: Clip[];
+  locked?: boolean;
+  muted?: boolean;
+  hidden?: boolean;
 }
 
 export interface SystemInfo {
@@ -57,10 +60,37 @@ export interface MediaFile {
   sizeBytes: number;
 }
 
+interface ProjectData {
+  projectName: string;
+  tracks: Track[];
+  mediaPool: MediaFile[];
+  lyricsText?: string;
+}
+
 interface TimelineState {
   // System state
   systemStatus: SystemInfo | null;
   setSystemStatus: (status: SystemInfo | null) => void;
+
+  // Project management
+  workspacePath: string | null;
+  projectPath: string | null;
+  projectName: string;
+  hasOpenProject: boolean;
+  isDirty: boolean;
+  setWorkspacePath: (path: string) => void;
+  setProjectPath: (path: string | null) => void;
+  setProjectName: (name: string, silent?: boolean) => void;
+  setHasOpenProject: (open: boolean) => void;
+  markDirty: () => void;
+  markClean: () => void;
+  loadProjectData: (json: string) => void;
+  getProjectJson: () => string;
+  resetProject: () => void;
+
+  // Lyrics
+  lyricsText: string;
+  setLyricsText: (text: string) => void;
 
   // Media pool
   mediaPool: MediaFile[];
@@ -90,26 +120,93 @@ interface TimelineState {
   updateClipOffsets: (clipId: string, startOffset: number, endOffset: number) => void;
   moveClip: (clipId: string, newTrackId: string, newTimeStart: number) => void;
   updateClipProperties: (clipId: string, properties: Partial<Clip>) => void;
+  rippleDeleteClip: (clipId: string) => void;
+  rippleTrimLeft: (clipId: string, time: number) => void;
+  rippleTrimRight: (clipId: string, time: number) => void;
+
+  toggleTrackLock: (trackId: string) => void;
+  toggleTrackMute: (trackId: string) => void;
+  toggleTrackHide: (trackId: string) => void;
 
   recalculateDuration: () => void;
 }
+
+let recalcTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleRecalc(fn: () => void) {
+  if (recalcTimer !== null) clearTimeout(recalcTimer);
+  recalcTimer = setTimeout(() => { recalcTimer = null; fn(); }, 50);
+}
+
+const DEFAULT_TRACKS: Track[] = [
+  { id: "v-1", name: "Video Track 1", type: "video", clips: [] },
+  { id: "a-1", name: "Audio Track 1", type: "audio", clips: [] },
+  { id: "s-1", name: "Subtitle Track 1", type: "subtitle", clips: [] },
+];
 
 export const useTimelineStore = create<TimelineState>((set, get) => ({
   systemStatus: null,
   setSystemStatus: (status) => set({ systemStatus: status }),
 
+  workspacePath: null,
+  projectPath: null,
+  projectName: "Untitled Project",
+  hasOpenProject: false,
+  isDirty: false,
+  setWorkspacePath: (path) => set({ workspacePath: path }),
+  setProjectPath: (path) => set({ projectPath: path }),
+  setProjectName: (name, silent = false) => set({ projectName: name, ...(silent ? {} : { isDirty: true }) }),
+  setHasOpenProject: (open) => set({ hasOpenProject: open }),
+  markDirty: () => set({ isDirty: true }),
+  markClean: () => set({ isDirty: false }),
+
+  lyricsText: "",
+  setLyricsText: (text) => set({ lyricsText: text, isDirty: true }),
+
+  loadProjectData: (json: string) => {
+    try {
+      const data: ProjectData = JSON.parse(json);
+      set({
+        projectName: data.projectName ?? "Untitled Project",
+        tracks: data.tracks ?? DEFAULT_TRACKS,
+        mediaPool: data.mediaPool ?? [],
+        lyricsText: data.lyricsText ?? "",
+        playhead: 0,
+        isPlaying: false,
+        selectedClipId: null,
+        isDirty: false,
+      });
+      scheduleRecalc(() => get().recalculateDuration());
+    } catch (e) {
+      throw new Error(`Invalid project file: ${e}`);
+    }
+  },
+
+  getProjectJson: () => {
+    const { projectName, tracks, mediaPool, lyricsText } = get();
+    return JSON.stringify({ projectName, tracks, mediaPool, lyricsText }, null, 2);
+  },
+
+  resetProject: () => set({
+    tracks: DEFAULT_TRACKS,
+    mediaPool: [],
+    lyricsText: "",
+    playhead: 0,
+    isPlaying: false,
+    timelineDuration: 0,
+    selectedClipId: null,
+    projectName: "Untitled Project",
+    projectPath: null,
+    isDirty: false,
+  }),
+
   mediaPool: [],
-  addMediaFile: (file) => set((state) => ({ mediaPool: [...state.mediaPool, file] })),
-  removeMediaFile: (id) => set((state) => ({ mediaPool: state.mediaPool.filter((m) => m.id !== id) })),
+  addMediaFile: (file) => set((state) => ({ mediaPool: [...state.mediaPool, file], isDirty: true })),
+  removeMediaFile: (id) => set((state) => ({ mediaPool: state.mediaPool.filter((m) => m.id !== id), isDirty: true })),
   updateMediaFile: (id, properties) => set((state) => ({
     mediaPool: state.mediaPool.map((m) => (m.id === id ? { ...m, ...properties } : m)),
   })),
 
-  tracks: [
-    { id: "v-1", name: "Video Track 1", type: "video", clips: [] },
-    { id: "a-1", name: "Audio Track 1", type: "audio", clips: [] },
-    { id: "s-1", name: "Subtitle Track 1", type: "subtitle", clips: [] },
-  ],
+  tracks: DEFAULT_TRACKS,
   playhead: 0,
   zoom: 50, // 50px = 1s
   isPlaying: false,
@@ -117,7 +214,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   selectedClipId: null,
 
   setPlayhead: (time) => set({ playhead: Math.max(0, time) }),
-  setZoom: (zoom) => set({ zoom: Math.max(10, Math.min(zoom, 500)) }),
+  setZoom: (zoom) => set({ zoom: Math.max(0.1, Math.min(zoom, 5000)) }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   setSelectedClipId: (selectedClipId) => set({ selectedClipId }),
 
@@ -129,14 +226,19 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       type,
       clips: [],
     };
-    return { tracks: [...state.tracks, newTrack] };
+    return { tracks: [...state.tracks, newTrack], isDirty: true };
   }),
 
   removeTrack: (trackId) => set((state) => {
-    return { tracks: state.tracks.filter((t) => t.id !== trackId) };
+    const targetTrack = state.tracks.find((t) => t.id === trackId);
+    if (targetTrack?.locked) return {};
+    return { tracks: state.tracks.filter((t) => t.id !== trackId), isDirty: true };
   }),
 
   addClip: (trackId, clipData) => set((state) => {
+    const targetTrack = state.tracks.find((t) => t.id === trackId);
+    if (targetTrack?.locked) return {};
+
     const id = `clip-${Date.now()}`;
     const newClip: Clip = {
       ...clipData,
@@ -151,22 +253,26 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       return track;
     });
 
-    setTimeout(() => get().recalculateDuration(), 0);
+    scheduleRecalc(() => get().recalculateDuration());
 
-    return { tracks: newTracks, selectedClipId: id };
+    return { tracks: newTracks, selectedClipId: id, isDirty: true };
   }),
 
   deleteClip: (clipId) => set((state) => {
+    const containingTrack = state.tracks.find((t) => t.clips.some((c) => c.id === clipId));
+    if (containingTrack?.locked) return {};
+
     const newTracks = state.tracks.map((track) => ({
       ...track,
       clips: track.clips.filter((c) => c.id !== clipId),
     }));
 
-    setTimeout(() => get().recalculateDuration(), 0);
+    scheduleRecalc(() => get().recalculateDuration());
 
     return {
       tracks: newTracks,
       selectedClipId: state.selectedClipId === clipId ? null : state.selectedClipId,
+      isDirty: true,
     };
   }),
 
@@ -178,6 +284,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     for (const track of state.tracks) {
       const found = track.clips.find((c) => c.id === clipId);
       if (found) {
+        if (track.locked) return {};
         clipToSplit = found;
         targetTrackId = track.id;
         break;
@@ -195,15 +302,16 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     const splitRatio = (time - clipToSplit.timeStart) * clipToSplit.speed;
     const splitSourcePoint = clipToSplit.startOffset + splitRatio;
 
+    const ts = Date.now();
     const firstHalf: Clip = {
       ...clipToSplit,
-      id: `${clipToSplit.id}-1`,
+      id: `clip-${ts}-a`,
       endOffset: splitSourcePoint,
     };
 
     const secondHalf: Clip = {
       ...clipToSplit,
-      id: `${clipToSplit.id}-2`,
+      id: `clip-${ts}-b`,
       timeStart: time,
       startOffset: splitSourcePoint,
     };
@@ -216,10 +324,13 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       return track;
     });
 
-    return { tracks: newTracks, selectedClipId: secondHalf.id };
+    return { tracks: newTracks, selectedClipId: secondHalf.id, isDirty: true };
   }),
 
   updateClipOffsets: (clipId, startOffset, endOffset) => set((state) => {
+    const containingTrack = state.tracks.find((t) => t.clips.some((c) => c.id === clipId));
+    if (containingTrack?.locked) return {};
+
     const newTracks = state.tracks.map((track) => ({
       ...track,
       clips: track.clips.map((c) => {
@@ -230,12 +341,18 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       }),
     }));
 
-    setTimeout(() => get().recalculateDuration(), 0);
+    scheduleRecalc(() => get().recalculateDuration());
 
-    return { tracks: newTracks };
+    return { tracks: newTracks, isDirty: true };
   }),
 
   moveClip: (clipId, newTrackId, newTimeStart) => set((state) => {
+    const sourceTrack = state.tracks.find((t) => t.clips.some((c) => c.id === clipId));
+    if (sourceTrack?.locked) return {};
+
+    const targetTrack = state.tracks.find((t) => t.id === newTrackId);
+    if (targetTrack?.locked) return {};
+
     let movingClip: Clip | null = null;
 
     // Remove clip from old track
@@ -250,6 +367,15 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
 
     if (!movingClip) return {};
 
+    // Validate clip type matches target track type
+    const mc = movingClip as Clip;
+    if (targetTrack) {
+      const videoTypes = new Set(["video", "image"]);
+      if (targetTrack.type === "audio" && !["audio"].includes(mc.type)) return {};
+      if (targetTrack.type === "video" && !videoTypes.has(mc.type)) return {};
+      if (targetTrack.type === "subtitle" && !["subtitle", "text"].includes(mc.type)) return {};
+    }
+
     // Add clip to new track
     const newTracks = tracksWithoutClip.map((track) => {
       if (track.id === newTrackId) {
@@ -258,12 +384,15 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       return track;
     });
 
-    setTimeout(() => get().recalculateDuration(), 0);
+    scheduleRecalc(() => get().recalculateDuration());
 
-    return { tracks: newTracks };
+    return { tracks: newTracks, isDirty: true };
   }),
 
   updateClipProperties: (clipId, properties) => set((state) => {
+    const containingTrack = state.tracks.find((t) => t.clips.some((c) => c.id === clipId));
+    if (containingTrack?.locked) return {};
+
     const newTracks = state.tracks.map((track) => ({
       ...track,
       clips: track.clips.map((c) => {
@@ -274,9 +403,160 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       }),
     }));
 
-    setTimeout(() => get().recalculateDuration(), 0);
+    scheduleRecalc(() => get().recalculateDuration());
 
-    return { tracks: newTracks };
+    return { tracks: newTracks, isDirty: true };
+  }),
+
+  rippleDeleteClip: (clipId) => set((state) => {
+    let containingTrack = null;
+    let targetClip = null;
+    for (const track of state.tracks) {
+      const found = track.clips.find((c) => c.id === clipId);
+      if (found) {
+        containingTrack = track;
+        targetClip = found;
+        break;
+      }
+    }
+
+    if (!containingTrack || containingTrack.locked || !targetClip) return {};
+
+    const clipDuration = (targetClip.endOffset - targetClip.startOffset) / targetClip.speed;
+    const clipStart = targetClip.timeStart;
+
+    const newTracks = state.tracks.map((track) => {
+      if (track.id === containingTrack!.id) {
+        const filtered = track.clips.filter((c) => c.id !== clipId);
+        const mapped = filtered.map((c) => {
+          if (c.timeStart > clipStart) {
+            return { ...c, timeStart: Math.max(0, c.timeStart - clipDuration) };
+          }
+          return c;
+        });
+        return { ...track, clips: mapped };
+      }
+      return track;
+    });
+
+    scheduleRecalc(() => get().recalculateDuration());
+
+    return {
+      tracks: newTracks,
+      selectedClipId: state.selectedClipId === clipId ? null : state.selectedClipId,
+      isDirty: true,
+    };
+  }),
+
+  rippleTrimLeft: (clipId, time) => set((state) => {
+    let containingTrack = null;
+    let targetClip = null;
+    for (const track of state.tracks) {
+      const found = track.clips.find((c) => c.id === clipId);
+      if (found) {
+        containingTrack = track;
+        targetClip = found;
+        break;
+      }
+    }
+
+    if (!containingTrack || containingTrack.locked || !targetClip) return {};
+
+    const clipEnd = targetClip.timeStart + (targetClip.endOffset - targetClip.startOffset) / targetClip.speed;
+    if (time <= targetClip.timeStart || time >= clipEnd) return {};
+
+    const deltaTime = time - targetClip.timeStart;
+    const offsetDelta = deltaTime * targetClip.speed;
+    const newStartOffset = targetClip.startOffset + offsetDelta;
+    const originalTimeStart = targetClip.timeStart;
+
+    const newTracks = state.tracks.map((track) => {
+      if (track.id === containingTrack!.id) {
+        return {
+          ...track,
+          clips: track.clips.map((c) => {
+            if (c.id === clipId) {
+              return { ...c, startOffset: newStartOffset }; // timeStart remains originalTimeStart due to shift left cancelling shift right
+            }
+            if (c.timeStart > originalTimeStart) {
+              return { ...c, timeStart: Math.max(0, c.timeStart - deltaTime) };
+            }
+            return c;
+          }),
+        };
+      }
+      return track;
+    });
+
+    scheduleRecalc(() => get().recalculateDuration());
+
+    return { tracks: newTracks, isDirty: true };
+  }),
+
+  rippleTrimRight: (clipId, time) => set((state) => {
+    let containingTrack = null;
+    let targetClip = null;
+    for (const track of state.tracks) {
+      const found = track.clips.find((c) => c.id === clipId);
+      if (found) {
+        containingTrack = track;
+        targetClip = found;
+        break;
+      }
+    }
+
+    if (!containingTrack || containingTrack.locked || !targetClip) return {};
+
+    const clipEnd = targetClip.timeStart + (targetClip.endOffset - targetClip.startOffset) / targetClip.speed;
+    if (time <= targetClip.timeStart || time >= clipEnd) return {};
+
+    const deltaTime = clipEnd - time;
+    const offsetDelta = deltaTime * targetClip.speed;
+    const newEndOffset = targetClip.endOffset - offsetDelta;
+    const originalTimeStart = targetClip.timeStart;
+
+    const newTracks = state.tracks.map((track) => {
+      if (track.id === containingTrack!.id) {
+        return {
+          ...track,
+          clips: track.clips.map((c) => {
+            if (c.id === clipId) {
+              return { ...c, endOffset: newEndOffset };
+            }
+            if (c.timeStart > originalTimeStart) {
+              return { ...c, timeStart: Math.max(0, c.timeStart - deltaTime) };
+            }
+            return c;
+          }),
+        };
+      }
+      return track;
+    });
+
+    scheduleRecalc(() => get().recalculateDuration());
+
+    return { tracks: newTracks, isDirty: true };
+  }),
+
+  toggleTrackLock: (trackId) => set((state) => {
+    const newTracks = state.tracks.map((t) =>
+      t.id === trackId ? { ...t, locked: !t.locked } : t
+    );
+    return { tracks: newTracks, isDirty: true };
+  }),
+
+  toggleTrackMute: (trackId) => set((state) => {
+    const newTracks = state.tracks.map((t) =>
+      t.id === trackId ? { ...t, muted: !t.muted } : t
+    );
+    return { tracks: newTracks, isDirty: true };
+  }),
+
+  toggleTrackHide: (trackId) => set((state) => {
+    const newTracks = state.tracks.map((t) =>
+      t.id === trackId ? { ...t, hidden: !t.hidden } : t
+    );
+    return { tracks: newTracks, isDirty: true };
   }),
 
   recalculateDuration: () => {

@@ -1,21 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTimelineStore } from "../store/timelineStore";
-import { 
-  Sparkles, 
-  Languages, 
-  Loader2, 
-  Image, 
-  FileText, 
-  Plus, 
-  Check, 
-  Mic, 
-  Volume2, 
-  Video, 
-  Scissors, 
-  Music,
+import {
+  Sparkles,
+  Languages,
+  Loader2,
+  Image,
+  FileText,
+  Plus,
+  Mic,
+  Volume2,
+  Video,
+  Scissors,
   Download,
-  AlertCircle
 } from "lucide-react";
 
 export const AiGenerator: React.FC = () => {
@@ -162,7 +159,7 @@ export const AiGenerator: React.FC = () => {
             volume: 1.0,
             speed: 1.0,
             text: seg.text,
-            color: "rgba(245, 158, 11, 0.45)", // soft translucent orange
+            color: "#4a4a4a",
           });
         });
       }, 100);
@@ -445,7 +442,7 @@ export const AiGenerator: React.FC = () => {
             <div className="input-group">
               <label className="input-label" style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Whisper Weights (.bin)</span>
-                <span style={{ fontSize: "9px", color: "var(--accent-teal)", cursor: "pointer" }} onClick={loadModels}>
+                <span style={{ fontSize: "9px", cursor: "pointer" }} onClick={loadModels}>
                   Refresh
                 </span>
               </label>
@@ -462,7 +459,7 @@ export const AiGenerator: React.FC = () => {
                 ))}
               </select>
               {whisperModels.length === 0 && (
-                <span style={{ fontSize: "9px", color: "var(--accent-orange)", marginTop: "2px" }}>
+                <span style={{ fontSize: "9px", marginTop: "2px" }}>
                   Download whisper-base.bin in Model Vault first!
                 </span>
               )}
@@ -476,7 +473,7 @@ export const AiGenerator: React.FC = () => {
             >
               {isTranscribing ? (
                 <>
-                  <Loader2 size={12} className="animate-spin" /> Transcribing Audio...
+                  <Loader2 size={12} /> Transcribing Audio...
                 </>
               ) : (
                 <>
@@ -491,8 +488,6 @@ export const AiGenerator: React.FC = () => {
                 style={{ 
                   marginTop: "8px", 
                   fontSize: "11px", 
-                  color: transcribeResult.startsWith("Error") ? "var(--accent-rose)" : "var(--accent-teal)",
-                  backgroundColor: "rgba(12, 16, 26, 0.4)",
                   border: "1px solid var(--border-normal)"
                 }}
               >
@@ -508,7 +503,7 @@ export const AiGenerator: React.FC = () => {
             <div className="input-group">
               <label className="input-label" style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>SD Checkpoint (.safetensors)</span>
-                <span style={{ fontSize: "9px", color: "var(--accent-teal)", cursor: "pointer" }} onClick={loadModels}>
+                <span style={{ fontSize: "9px", cursor: "pointer" }} onClick={loadModels}>
                   Refresh
                 </span>
               </label>
@@ -525,7 +520,7 @@ export const AiGenerator: React.FC = () => {
                 ))}
               </select>
               {sdModels.length === 0 && (
-                <span style={{ fontSize: "9px", color: "var(--accent-orange)", marginTop: "2px" }}>
+                <span style={{ fontSize: "9px", marginTop: "2px" }}>
                   Download SD checkpoint in Model Vault first!
                 </span>
               )}
@@ -585,7 +580,7 @@ export const AiGenerator: React.FC = () => {
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="A beautiful futuristic sci-fi city scene, cinematic lighting..."
                 rows={3}
-                style={{ fontSize: "11px", padding: "6px", width: "100%", backgroundColor: "#06080e", border: "1px solid var(--border-normal)", borderRadius: "4px", color: "#fff" }}
+                style={{ fontSize: "11px", padding: "6px", width: "100%", backgroundColor: "#1e1e1e", border: "1px solid var(--border-normal)", borderRadius: "4px", color: "#fff" }}
               />
             </div>
 
@@ -596,7 +591,7 @@ export const AiGenerator: React.FC = () => {
                 onChange={(e) => setNegPrompt(e.target.value)}
                 placeholder="blurry, ugly, text, watermark..."
                 rows={1}
-                style={{ fontSize: "11px", padding: "6px", width: "100%", backgroundColor: "#06080e", border: "1px solid var(--border-normal)", borderRadius: "4px", color: "#fff" }}
+                style={{ fontSize: "11px", padding: "6px", width: "100%", backgroundColor: "#1e1e1e", border: "1px solid var(--border-normal)", borderRadius: "4px", color: "#fff" }}
               />
             </div>
 
@@ -608,7 +603,7 @@ export const AiGenerator: React.FC = () => {
             >
               {isGenerating ? (
                 <>
-                  <Loader2 size={12} className="animate-spin" /> Compiling/Generating SD...
+                  <Loader2 size={12} /> Compiling/Generating SD...
                 </>
               ) : (
                 <>
@@ -619,10 +614,10 @@ export const AiGenerator: React.FC = () => {
 
             {generatedImagePath && (
               <div className="item-card" style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "10px", alignItems: "center" }}>
-                <span style={{ fontSize: "10px", color: "var(--accent-teal)", fontWeight: "600", width: "100%", textAlign: "left" }}>
+                <span style={{ fontSize: "10px", fontWeight: "600", width: "100%", textAlign: "left" }}>
                   GENERATED IMAGE PATH:
                 </span>
-                <code style={{ fontSize: "8px", color: "var(--text-muted)", wordBreak: "break-all", background: "rgba(0,0,0,0.3)", padding: "4px", borderRadius: "2px" }}>
+                <code style={{ fontSize: "8px", wordBreak: "break-all", background: "rgba(0,0,0,0.3)", padding: "4px", borderRadius: "2px" }}>
                   {generatedImagePath}
                 </code>
                 
@@ -634,7 +629,7 @@ export const AiGenerator: React.FC = () => {
                 >
                   {isAddingImage ? (
                     <>
-                      <Loader2 size={11} className="animate-spin" /> Transcoding Media...
+                      <Loader2 size={11} /> Transcoding Media...
                     </>
                   ) : (
                     <>
@@ -653,7 +648,7 @@ export const AiGenerator: React.FC = () => {
             
             {/* Stem Splitter Card */}
             <div className="card-list" style={{ border: "1px solid var(--border-normal)", padding: "8px", borderRadius: "6px" }}>
-              <span className="input-label" style={{ fontSize: "11px", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px", color: "var(--accent-teal)", marginBottom: "6px" }}>
+              <span className="input-label" style={{ fontSize: "11px", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px", marginBottom: "6px" }}>
                 <Scissors size={12} /> Demucs Vocal Stem Splitter
               </span>
 
@@ -680,7 +675,7 @@ export const AiGenerator: React.FC = () => {
               >
                 {isSplitting ? (
                   <>
-                    <Loader2 size={12} className="animate-spin" /> Splitting Stems (Demucs)...
+                    <Loader2 size={12} /> Splitting Stems (Demucs)...
                   </>
                 ) : (
                   <>
@@ -691,7 +686,7 @@ export const AiGenerator: React.FC = () => {
 
               {splitResult && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "8px" }}>
-                  <span style={{ fontSize: "9px", color: "var(--text-muted)" }}>Select stem to import:</span>
+                  <span style={{ fontSize: "9px" }}>Select stem to import:</span>
                   {[
                     { key: "Vocals", path: splitResult.vocals_path },
                     { key: "Drums", path: splitResult.drums_path },
@@ -713,7 +708,7 @@ export const AiGenerator: React.FC = () => {
                     >
                       <span>{stem.key}</span>
                       {isAddingStem === stem.key ? (
-                        <Loader2 size={10} className="animate-spin" />
+                        <Loader2 size={10} />
                       ) : (
                         <Download size={10} />
                       )}
@@ -725,7 +720,7 @@ export const AiGenerator: React.FC = () => {
 
             {/* Vocal Synthesizer Card */}
             <div className="card-list" style={{ border: "1px solid var(--border-normal)", padding: "8px", borderRadius: "6px" }}>
-              <span className="input-label" style={{ fontSize: "11px", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px", color: "var(--accent-rose)", marginBottom: "6px" }}>
+              <span className="input-label" style={{ fontSize: "11px", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px", color: "var(--text-bright)", marginBottom: "6px" }}>
                 <Volume2 size={12} /> IndexTTS2 Voice Narrator
               </span>
 
@@ -736,7 +731,7 @@ export const AiGenerator: React.FC = () => {
                   onChange={(e) => setTtsText(e.target.value)}
                   placeholder="Welcome to the future of AI-assisted video editing..."
                   rows={2}
-                  style={{ fontSize: "11px", padding: "6px", width: "100%", backgroundColor: "#06080e", border: "1px solid var(--border-normal)", borderRadius: "4px", color: "#fff" }}
+                  style={{ fontSize: "11px", padding: "6px", width: "100%", backgroundColor: "#1e1e1e", border: "1px solid var(--border-normal)", borderRadius: "4px", color: "#fff" }}
                 />
               </div>
 
@@ -805,7 +800,7 @@ export const AiGenerator: React.FC = () => {
               >
                 {isSynthesizing ? (
                   <>
-                    <Loader2 size={12} className="animate-spin" /> Synthesizing Speech...
+                    <Loader2 size={12} /> Synthesizing Speech...
                   </>
                 ) : (
                   <>
@@ -816,7 +811,7 @@ export const AiGenerator: React.FC = () => {
 
               {generatedAudioPath && (
                 <div className="item-card" style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px", alignItems: "center" }}>
-                  <span style={{ fontSize: "9px", color: "var(--accent-teal)", alignSelf: "flex-start" }}>SYNTHESIS COMPLETE:</span>
+                  <span style={{ fontSize: "9px", color: "var(--text-bright)", alignSelf: "flex-start" }}>SYNTHESIS COMPLETE:</span>
                   <button
                     className="btn-primary"
                     onClick={handleImportTts}
@@ -824,7 +819,7 @@ export const AiGenerator: React.FC = () => {
                     style={{ width: "100%", fontSize: "10px" }}
                   >
                     {isAddingTts ? (
-                      <Loader2 size={10} className="animate-spin" />
+                      <Loader2 size={10} />
                     ) : (
                       <>
                         <Plus size={10} /> Import to Media Pool
@@ -891,7 +886,7 @@ export const AiGenerator: React.FC = () => {
                 onChange={(e) => setVideoPrompt(e.target.value)}
                 placeholder="Cinematic zoom-in on an astronaut walking in dark neon cyberspace..."
                 rows={3}
-                style={{ fontSize: "11px", padding: "6px", width: "100%", backgroundColor: "#06080e", border: "1px solid var(--border-normal)", borderRadius: "4px", color: "#fff" }}
+                style={{ fontSize: "11px", padding: "6px", width: "100%", backgroundColor: "#1e1e1e", border: "1px solid var(--border-normal)", borderRadius: "4px", color: "#fff" }}
               />
             </div>
 
@@ -903,7 +898,7 @@ export const AiGenerator: React.FC = () => {
             >
               {isGeneratingVideo ? (
                 <>
-                  <Loader2 size={12} className="animate-spin" /> Compiling Video clip...
+                  <Loader2 size={12} /> Compiling Video clip...
                 </>
               ) : (
                 <>
@@ -914,8 +909,8 @@ export const AiGenerator: React.FC = () => {
 
             {generatedVideoPath && (
               <div className="item-card" style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "10px", alignItems: "center" }}>
-                <span style={{ fontSize: "9px", color: "var(--accent-teal)", alignSelf: "flex-start" }}>GENERATED MP4 PATH:</span>
-                <code style={{ fontSize: "8px", color: "var(--text-muted)", wordBreak: "break-all", background: "rgba(0,0,0,0.3)", padding: "4px", borderRadius: "2px" }}>
+                <span style={{ fontSize: "9px", color: "var(--text-bright)", alignSelf: "flex-start" }}>GENERATED MP4 PATH:</span>
+                <code style={{ fontSize: "8px", wordBreak: "break-all", background: "rgba(0,0,0,0.3)", padding: "4px", borderRadius: "2px" }}>
                   {generatedVideoPath}
                 </code>
                 <button
@@ -925,7 +920,7 @@ export const AiGenerator: React.FC = () => {
                   style={{ width: "100%", fontSize: "11px" }}
                 >
                   {isAddingVideo ? (
-                    <Loader2 size={10} className="animate-spin" />
+                    <Loader2 size={10} />
                   ) : (
                     <>
                       <Plus size={10} /> Import to Media Pool

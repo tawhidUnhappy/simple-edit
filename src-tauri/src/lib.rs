@@ -30,6 +30,12 @@ pub fn run() {
             commands::media::import_media_file,
             commands::python_server::get_python_server_port,
             commands::timeline::export_project,
+            commands::settings::get_workspace_dir,
+            commands::settings::set_workspace_dir,
+            commands::settings::save_project_file,
+            commands::settings::load_project_file,
+            commands::settings::file_exists,
+            commands::settings::delete_project_file,
             engines::whisper::transcribe_video,
             engines::sd::generate_sd_image
         ])
