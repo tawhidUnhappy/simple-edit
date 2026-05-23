@@ -626,21 +626,21 @@ const TimelineComponent: React.FC = () => {
                   style={{ opacity: isHidden ? 0.35 : 1, position: "relative" }}>
                   <div className="track-header">
                     <span className="track-name">{track.name}</span>
-                    <div style={{ display: "flex", gap: "8px", marginTop: "2px" }}>
+                    <div style={{ display: "flex", gap: "4px", marginTop: "2px" }}>
                       <button onClick={() => toggleTrackLock(track.id)}
-                        style={{ background: "none", border: "none", color: isLocked ? "var(--text-bright)" : "var(--text-muted)", cursor: "pointer" }}
+                        style={{ background: "none", border: "none", color: isLocked ? "var(--text-bright)" : "var(--text-muted)", cursor: "pointer", padding: "4px", touchAction: "manipulation" }}
                         title={isLocked ? "Unlock" : "Lock"}>
-                        {isLocked ? <Lock size={10} /> : <Unlock size={10} />}
+                        {isLocked ? <Lock size={14} /> : <Unlock size={14} />}
                       </button>
                       <button onClick={() => toggleTrackMute(track.id)}
-                        style={{ background: "none", border: "none", color: isMuted ? "var(--text-bright)" : "var(--text-muted)", cursor: "pointer" }}
+                        style={{ background: "none", border: "none", color: isMuted ? "var(--text-bright)" : "var(--text-muted)", cursor: "pointer", padding: "4px", touchAction: "manipulation" }}
                         title={isMuted ? "Unmute" : "Mute"}>
-                        {isMuted ? <VolumeX size={10} /> : <Volume2 size={10} />}
+                        {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
                       </button>
                       <button onClick={() => toggleTrackHide(track.id)}
-                        style={{ background: "none", border: "none", color: isHidden ? "var(--text-bright)" : "var(--text-muted)", cursor: "pointer" }}
+                        style={{ background: "none", border: "none", color: isHidden ? "var(--text-bright)" : "var(--text-muted)", cursor: "pointer", padding: "4px", touchAction: "manipulation" }}
                         title={isHidden ? "Unhide" : "Hide"}>
-                        {isHidden ? <EyeOff size={10} /> : <Eye size={10} />}
+                        {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
                       </button>
                     </div>
                   </div>

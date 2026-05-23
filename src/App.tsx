@@ -664,38 +664,38 @@ function App() {
           {/* Right Panel: Multiple AI & Inspector Tabs */}
           <div className="panel last">
             <div className="panel-header">
-              <div className="tab-container" style={{ margin: 0, width: "100%", display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: "2px" }}>
+              <div className="tab-container" style={{ margin: 0, width: "100%", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "2px" }}>
                 <button
                   className={`tab-btn ${rightTab === "tools" ? "active" : ""}`}
-                  style={{ fontSize: "9px", padding: "4px 0" }}
+                  style={{ fontSize: "10px", padding: "5px 0" }}
                   onClick={() => setRightTab("tools")}
                 >
                   AI Tools
                 </button>
                 <button
                   className={`tab-btn ${rightTab === "generation" ? "active" : ""}`}
-                  style={{ fontSize: "9px", padding: "4px 0" }}
+                  style={{ fontSize: "10px", padding: "5px 0" }}
                   onClick={() => setRightTab("generation")}
                 >
                   Generate
                 </button>
                 <button
                   className={`tab-btn ${rightTab === "lyrics" ? "active" : ""}`}
-                  style={{ fontSize: "9px", padding: "4px 0" }}
+                  style={{ fontSize: "10px", padding: "5px 0" }}
                   onClick={() => setRightTab("lyrics")}
                 >
                   Lyrics
                 </button>
                 <button
                   className={`tab-btn ${rightTab === "visualizer" ? "active" : ""}`}
-                  style={{ fontSize: "9px", padding: "4px 0" }}
+                  style={{ fontSize: "10px", padding: "5px 0" }}
                   onClick={() => setRightTab("visualizer")}
                 >
                   Visualizer
                 </button>
                 <button
                   className={`tab-btn ${rightTab === "inspector" ? "active" : ""}`}
-                  style={{ fontSize: "9px", padding: "4px 0" }}
+                  style={{ fontSize: "10px", padding: "5px 0" }}
                   onClick={() => setRightTab("inspector")}
                 >
                   Inspector

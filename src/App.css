@@ -161,8 +161,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 40px;
-  padding: 0 16px;
+  min-height: 40px;
+  height: auto;
+  padding: 4px 8px;
   background-color: var(--bg-panel);
   border-bottom: 1px solid var(--border-dim);
 }
@@ -928,4 +929,41 @@ input[type="text"]:focus, select:focus, textarea:focus {
 .time-scrubber-progress,
 .time-scrubber-handle {
   will-change: width, left;
+}
+
+/* ── Scrollbar styling ───────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-normal);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-focus);
+}
+
+/* ── Toolbar icon buttons — consistent 28px hit zone ────────────────────── */
+.timeline-toolbar .icon-btn {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px;
+  border-radius: 4px;
+}
+.timeline-toolbar .icon-btn:hover {
+  background: var(--bg-panel-light);
+}
+
+/* ── Track header controls — legible touch targets ───────────────────────── */
+.track-header button {
+  border-radius: 4px;
+  min-width: 24px;
+  min-height: 24px;
+}
+.track-header button:hover {
+  background: var(--bg-panel-light) !important;
 }
