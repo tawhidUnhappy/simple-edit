@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useMemo, useCallback } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useTimelineStore, Clip } from "../store/timelineStore";
 import { playheadBus } from "../lib/playheadBus";
-import { useWebAudio } from "../lib/useWebAudio";
+import { useAudioPool } from "../lib/useAudioPool";
 import { Play, Pause, SkipBack, SkipForward, Volume2, Maximize2 } from "lucide-react";
 
 interface LyricLine { time: number; text: string; }
@@ -70,7 +70,7 @@ const MonitorProgramComponent: React.FC = () => {
     !!tracks.find((t) => t.id === trackId)?.muted,
     [tracks],
   );
-  const webAudio = useWebAudio(audioClips, mediaServerPort, getTrackMuted);
+  const webAudio = useAudioPool(audioClips, mediaServerPort, getTrackMuted);
 
   // ── Internal refs ──────────────────────────────────────────────────────────
   const activeClipRef = useRef<Clip | null>(null);
@@ -321,17 +321,15 @@ const MonitorProgramComponent: React.FC = () => {
     setPlayhead(timelineDuration); playheadBus.emit(timelineDuration);
     if (isPlaying) { setIsPlaying(false); window.dispatchEvent(new CustomEvent("playback-toggle", { detail: false })); }
   };
-  const handleScrub = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleScrub = (e: React.PointerEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const t = Math.max(0, ((e.clientX - rect.left) / rect.width) * (timelineDuration || 10));
     setPlayhead(t); playheadBus.emit(t);
-    webAudio.stopAll(); // stop audio on scrub; will restart on play
+    webAudio.stopAll();
   };
 
   return (
     <div className="monitor-container" style={{ padding: "16px" }}>
-      {/* No hidden <audio> elements — Web Audio API handles all audio decoding */}
-
       {/* Video Screen */}
       <div className="video-screen" style={{ position: "relative" }}>
         {videoSrc ? (
@@ -355,7 +353,7 @@ const MonitorProgramComponent: React.FC = () => {
 
       {/* Transport Controls */}
       <div className="monitor-controls">
-        <div className="time-scrubber" onClick={handleScrub}>
+        <div className="time-scrubber" onPointerDown={handleScrub} style={{ touchAction: "none" }}>
           <div ref={progressBarRef} className="time-scrubber-progress" style={{ width: "0%" }} />
           <div ref={progressHandleRef} className="time-scrubber-handle" style={{ left: "0%" }} />
         </div>

@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useTimelineStore, Clip } from "../store/timelineStore";
-import { Plus, Trash2, Film, Music, Image, Loader2, Upload, FolderOpen, Eye, X } from "lucide-react";
+import { Plus, Trash2, Film, Music, Image, Loader2, Upload, FolderOpen, Eye, X, GripVertical } from "lucide-react";
 
 interface ProxyProgressPayload {
   clip_id: string;
@@ -25,6 +25,21 @@ interface ThumbnailProgressPayload {
   thumbnails_dir: string | null;
   error: string | null;
 }
+
+// Defers src assignment until the element scrolls into the visible viewport
+const LazyImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
+  const ref = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) { el.src = src; obs.disconnect(); }
+    }, { rootMargin: "100px" });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [src]);
+  return <img ref={ref} alt={alt} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />;
+};
 
 const MEDIA_EXTENSIONS = ["mp4", "mov", "avi", "mkv", "webm", "m4v", "mpg", "mpeg",
   "mp3", "wav", "aac", "m4a", "flac", "ogg", "opus",
@@ -174,16 +189,17 @@ export const MediaPool: React.FC = () => {
       {/* Drop Zone / Import Section */}
       <div
         style={{
-          border: `1.5px dashed ${isDragging ? "var(--border-focus)" : "var(--border-normal)"}`,
-          borderRadius: "10px",
-          padding: "16px 12px",
+          border: `2px dashed ${isDragging ? "var(--border-focus)" : "var(--border-normal)"}`,
+          borderRadius: "12px",
+          padding: "20px 12px",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: "8px",
-          background: isDragging ? "var(--bg-panel-light)" : "rgba(255,255,255,0.01)",
+          gap: "10px",
+          background: isDragging ? "rgba(96,165,250,0.07)" : "rgba(255,255,255,0.01)",
           transition: "border-color 0.2s, background 0.2s",
           cursor: "default",
+          touchAction: "manipulation",
         }}
       >
         <Upload size={22} style={{ color: isDragging ? "var(--text-bright)" : "var(--text-muted)", opacity: isDragging ? 1 : 0.5, transition: "color 0.2s" }} />
@@ -244,70 +260,55 @@ export const MediaPool: React.FC = () => {
 
               const PlaceholderIcon = isImageFile ? Image : isAudioFile ? Music : Film;
 
+              const typeLabel = isImageFile ? "image" : isAudioFile ? "audio" : "video";
+
               return (
-                <div 
-                  key={media.id} 
-                  className="media-thumbnail-card" 
+                <div
+                  key={media.id}
+                  className="media-card"
                   title={media.name}
                   draggable={true}
                   onDragStart={(e) => {
                     e.dataTransfer.setData("application/json", JSON.stringify(media));
                     e.dataTransfer.effectAllowed = "copy";
                   }}
-                  style={{ cursor: "grab" }}
                 >
-                  {thumbSrc ? (
-                    <img src={thumbSrc} alt={media.name} className="media-img" />
-                  ) : (
-                    <div className="media-placeholder">
-                      <PlaceholderIcon size={20} />
-                    </div>
-                  )}
-
-                  <span className="media-card-duration">{formatDuration(media.duration)}</span>
-                  <div className="media-card-title">{media.name}</div>
-
-                  <div
-                    className="media-thumbnail-actions"
-                    style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(10, 10, 10, 0.85)", opacity: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "6px", transition: "opacity 0.2s ease", zIndex: 3 }}
-                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.opacity = "0"; }}
-                  >
-                    <button className="btn-primary" style={{ padding: "4px 8px", fontSize: "10px", borderRadius: "4px", width: "80%" }} onClick={() => handleAddToTimeline(media)}>
-                      <Plus size={10} /> Add to Track
-                    </button>
-                    <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "10px", borderRadius: "4px", width: "80%", color: "var(--text-bright)", borderColor: "var(--border-normal)" }} onClick={() => setPreviewMedia(media)}>
-                      <Eye size={10} /> Preview
-                    </button>
-                    <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "10px", borderRadius: "4px", width: "80%", color: "var(--text-normal)", borderColor: "var(--border-normal)" }} onClick={() => removeMediaFile(media.id)}>
-                      <Trash2 size={10} /> Remove
-                    </button>
+                  {/* Thumbnail */}
+                  <div className="media-card-thumb">
+                    {thumbSrc ? (
+                      <LazyImage src={thumbSrc} alt={media.name} />
+                    ) : (
+                      <div className="media-card-thumb-icon">
+                        <PlaceholderIcon size={28} />
+                      </div>
+                    )}
+                    <span className={`media-card-type ${typeLabel}`}>{typeLabel}</span>
+                    <span className="media-card-duration">{formatDuration(media.duration)}</span>
                     {isProcessing && (
-                      <div style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "8px", color: "var(--text-muted)", marginTop: "4px" }}>
-                        <Loader2 size={10} className="animate-spin" /> Processing proxy...
+                      <div className="media-card-processing" title="Building proxy…">
+                        <Loader2 size={16} className="animate-spin" style={{ color: "var(--text-bright)" }} />
                       </div>
                     )}
                   </div>
 
-                  {isProcessing && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: 6,
-                        left: 6,
-                        padding: "4px",
-                        borderRadius: "50%",
-                        backgroundColor: "rgba(10, 10, 10, 0.75)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        zIndex: 2
-                      }}
-                      title="Building proxy/waveform in background"
-                    >
-                      <Loader2 size={10} className="animate-spin" style={{ color: "var(--text-bright)" }} />
-                    </div>
-                  )}
+                  {/* Filename */}
+                  <div className="media-card-info">{media.name}</div>
+
+                  {/* Always-visible action strip */}
+                  <div className="media-card-actions">
+                    <button className="action-drag" title="Drag to timeline" onPointerDown={(e) => e.stopPropagation()}>
+                      <GripVertical size={14} />
+                    </button>
+                    <button className="action-add" title="Add to Track" onClick={(e) => { e.stopPropagation(); handleAddToTimeline(media); }}>
+                      <Plus size={14} />
+                    </button>
+                    <button title="Preview" onClick={(e) => { e.stopPropagation(); setPreviewMedia(media); }}>
+                      <Eye size={13} />
+                    </button>
+                    <button className="action-remove" title="Remove" onClick={(e) => { e.stopPropagation(); removeMediaFile(media.id); }}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 </div>
               );
             })}

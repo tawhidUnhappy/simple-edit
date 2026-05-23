@@ -79,11 +79,21 @@ function drawTrack(
       ctx.restore();
     }
 
-    // Resize handles (only if not locked)
-    if (!isLocked) {
-      ctx.fillStyle = "rgba(255,255,255,0.15)";
-      ctx.fillRect(x, 1, 6, H - 2);
-      ctx.fillRect(x + w - 6, 1, 6, H - 2);
+    // Resize handles — 8px wide, clearly visible strips
+    if (!isLocked && w >= 20) {
+      const hColor = isSelected ? "rgba(96,165,250,0.60)" : "rgba(255,255,255,0.38)";
+      const pipColor = isSelected ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.72)";
+      const mid = Math.round(H / 2);
+      // Left handle
+      ctx.fillStyle = hColor;
+      ctx.fillRect(x, 1, 8, H - 2);
+      ctx.fillStyle = pipColor;
+      ctx.fillRect(x + 3, mid - 6, 2, 12);
+      // Right handle
+      ctx.fillStyle = hColor;
+      ctx.fillRect(x + w - 8, 1, 8, H - 2);
+      ctx.fillStyle = pipColor;
+      ctx.fillRect(x + w - 5, mid - 6, 2, 12);
     }
   }
 
@@ -113,8 +123,8 @@ function hitTest(
     const cx = clip.timeStart * zoom;
     const cw = Math.max(4, (clip.endOffset - clip.startOffset) / clip.speed * zoom);
     if (canvasX < cx || canvasX > cx + cw) continue;
-    if (canvasX - cx <= 7) return { clip, edge: "left" };
-    if (cx + cw - canvasX <= 7) return { clip, edge: "right" };
+    if (canvasX - cx <= 14) return { clip, edge: "left" };
+    if (cx + cw - canvasX <= 14) return { clip, edge: "right" };
     return { clip, edge: "body" };
   }
   return null;
@@ -188,6 +198,9 @@ const TimelineComponent: React.FC = () => {
   const isPlayingRef = useRef(isPlaying);
   const selectedClipIdRef = useRef(selectedClipId);
   const playheadRef = useRef(0);
+  // Pinch-to-zoom: tracks two pointer positions
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchInitRef = useRef<{ dist: number; zoom: number } | null>(null);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
   useEffect(() => { selectedClipIdRef.current = selectedClipId; }, [selectedClipId]);
@@ -373,7 +386,7 @@ const TimelineComponent: React.FC = () => {
   }, [setIsPlaying, setZoom, splitClip, deleteClip, rippleDeleteClip, rippleTrimLeft, rippleTrimRight, trimClipLeft, trimClipRight]);
 
   // ── Playhead scrubbing (ruler) ──
-  const updatePlayhead = useCallback((e: React.MouseEvent) => {
+  const updatePlayhead = useCallback((e: { clientX: number }) => {
     const rect = scrollAreaRef.current?.getBoundingClientRect();
     if (!rect) return;
     const t = Math.max(0, (e.clientX - rect.left - 120 + (scrollAreaRef.current?.scrollLeft || 0)) / zoomRef.current);
@@ -381,21 +394,27 @@ const TimelineComponent: React.FC = () => {
     playheadBus.emit(t);
   }, [setPlayhead]);
 
-  const handleRulerDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleRulerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
     if (isPlayingRef.current) { setIsPlaying(false); window.dispatchEvent(new CustomEvent("playback-toggle", { detail: false })); }
     setIsScrubbing(true);
     updatePlayhead(e);
   }, [setIsPlaying, updatePlayhead]);
 
-  const handleRulerMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleRulerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     if (isScrubbing) updatePlayhead(e);
   }, [isScrubbing, updatePlayhead]);
 
-  // ── Global mouseup ──
+  // ── Global pointer-up (handles both mouse and touch release) ──
   useEffect(() => {
-    const up = () => { setIsScrubbing(false); setDraggedClip(null); setResizeState(null); setSnapLineTime(null); };
-    window.addEventListener("mouseup", up);
-    return () => window.removeEventListener("mouseup", up);
+    const up = (e: PointerEvent) => {
+      activePointersRef.current.delete(e.pointerId);
+      if (activePointersRef.current.size < 2) pinchInitRef.current = null;
+      setIsScrubbing(false); setDraggedClip(null); setResizeState(null); setSnapLineTime(null);
+    };
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => { window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up); };
   }, []);
 
   // ── Snapping helper (used in mousemove) ──
@@ -412,9 +431,19 @@ const TimelineComponent: React.FC = () => {
     return null;
   };
 
-  // ── Track canvas mouse events ──
-  const handleCanvasMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>, track: Track) => {
+  // ── Track canvas pointer events ──
+  const handleCanvasPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>, track: Track) => {
+    // Track all pointers for pinch-to-zoom
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (activePointersRef.current.size === 2) {
+      const pts = Array.from(activePointersRef.current.values());
+      const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+      pinchInitRef.current = { dist, zoom: zoomRef.current };
+      return; // second touch starts pinch, not drag
+    }
+
     if (track.locked) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
     const rect = e.currentTarget.getBoundingClientRect();
     const canvasX = e.clientX - rect.left + (scrollAreaRef.current?.scrollLeft || 0);
     const hit = hitTest(canvasX, track.clips, zoomRef.current);
@@ -431,8 +460,29 @@ const TimelineComponent: React.FC = () => {
     }
   }, [setSelectedClipId]);
 
-  // ── Global mousemove (drag + resize) ──
-  const handleTimelineMouseMove = (e: React.MouseEvent) => {
+  // Show ew-resize cursor on edge hover, grab on body (pointer move on canvas)
+  const handleCanvasHover = useCallback((e: React.PointerEvent<HTMLCanvasElement>, track: Track) => {
+    if (draggedClip || resizeState) return; // parent container cursor takes over
+    const rect = e.currentTarget.getBoundingClientRect();
+    const canvasX = e.clientX - rect.left + (scrollAreaRef.current?.scrollLeft || 0);
+    const hit = hitTest(canvasX, track.clips, zoomRef.current);
+    e.currentTarget.style.cursor = hit ? (hit.edge !== "body" ? "ew-resize" : "grab") : "default";
+  }, [draggedClip, resizeState]);
+
+  // ── Pointer move on scroll area: drag, resize, or pinch-to-zoom ──
+  const handleTimelinePointerMove = (e: React.PointerEvent) => {
+    // Update pointer position for pinch tracking
+    if (activePointersRef.current.has(e.pointerId)) {
+      activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    // Pinch-to-zoom (2 fingers)
+    if (activePointersRef.current.size >= 2 && pinchInitRef.current) {
+      const pts = Array.from(activePointersRef.current.values());
+      const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+      setZoom(pinchInitRef.current.zoom * (dist / pinchInitRef.current.dist));
+      return;
+    }
+
     if (resizeState) {
       const { clip, edge, startX, original } = resizeState;
       const dt = (e.clientX - startX) / zoom;
@@ -537,16 +587,16 @@ const TimelineComponent: React.FC = () => {
       <div
         className="timeline-scrollview"
         ref={scrollAreaRef}
-        onMouseMove={handleTimelineMouseMove}
-        style={{ userSelect: "none", cursor: resizeState ? "ew-resize" : draggedClip ? "grabbing" : "default" }}
+        onPointerMove={handleTimelinePointerMove}
+        style={{ userSelect: "none", touchAction: "none", cursor: resizeState ? "ew-resize" : draggedClip ? "grabbing" : "default" }}
       >
         <div style={{ position: "relative", minWidth: "100%", width: "fit-content" }}>
 
           {/* Ruler */}
           <div style={{ display: "flex", paddingLeft: "120px", position: "sticky", top: 0, zIndex: 4 }}>
             <canvas ref={rulerCanvasRef} className="ruler-canvas"
-              onMouseDown={handleRulerDown} onMouseMove={handleRulerMove}
-              style={{ cursor: "col-resize" }} />
+              onPointerDown={handleRulerDown} onPointerMove={handleRulerMove}
+              style={{ cursor: "col-resize", touchAction: "none" }} />
           </div>
 
           {/* Track rows */}
@@ -590,8 +640,9 @@ const TimelineComponent: React.FC = () => {
                     }}
                     width={canvasW}
                     height={canvasH}
-                    style={{ display: "block", cursor: draggedClip ? "grabbing" : "default" }}
-                    onMouseDown={(e) => handleCanvasMouseDown(e, track)}
+                    style={{ display: "block", touchAction: "none" }}
+                    onPointerDown={(e) => handleCanvasPointerDown(e, track)}
+                    onPointerMove={(e) => handleCanvasHover(e, track)}
                     onDoubleClick={() => setSelectedClipId(null)}
                     onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
                     onDrop={(e) => {
@@ -628,7 +679,7 @@ const TimelineComponent: React.FC = () => {
 
             {/* Playhead line — DOM ref, updated by bus at 60fps */}
             <div ref={playheadLineRef} className="timeline-playhead-line"
-              style={{ left: `${playheadRef.current * zoom + 120}px` }}>
+              style={{ left: `${playheadRef.current * zoom + 120}px`, willChange: "left" }}>
               <div className="timeline-playhead-handle" />
             </div>
           </div>

@@ -277,6 +277,7 @@ input[type="text"]:focus, select:focus, textarea:focus {
   justify-content: center;
   gap: 6px;
   box-shadow: none;
+  touch-action: manipulation;
 }
 
 .btn-primary:hover {
@@ -311,6 +312,7 @@ input[type="text"]:focus, select:focus, textarea:focus {
   transition: var(--transition-smooth);
   display: inline-flex;
   align-items: center;
+  touch-action: manipulation;
   justify-content: center;
   gap: 6px;
 }
@@ -414,73 +416,135 @@ input[type="text"]:focus, select:focus, textarea:focus {
 
 .media-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
 
-.media-thumbnail-card {
-  position: relative;
-  aspect-ratio: 1;
-  background-color: var(--bg-panel);
+/* New card layout — thumbnail + info + always-visible actions */
+.media-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
   border: 1px solid var(--border-normal);
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
-  cursor: pointer;
-  transition: var(--transition-smooth);
+  transition: border-color 0.15s;
+  cursor: grab;
 }
+.media-card:active { cursor: grabbing; }
+.media-card:hover { border-color: var(--border-focus); }
 
-.media-thumbnail-card:hover {
-  border-color: var(--border-focus);
-  transform: scale(1.03);
+/* Thumbnail area */
+.media-card-thumb {
+  position: relative;
+  height: 90px;
+  background: var(--bg-darker);
+  overflow: hidden;
+  flex-shrink: 0;
 }
-
-.media-thumbnail-card.selected {
-  border-color: var(--text-bright);
-  box-shadow: none;
-}
-
-.media-img {
+.media-card-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
-
-.media-placeholder {
+.media-card-thumb-icon {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  background-color: var(--bg-panel-light);
 }
 
-.media-card-title {
+/* Type badge — top-left */
+.media-card-type {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%);
-  padding: 12px 6px 4px 6px;
-  font-size: 10px;
-  color: var(--text-bright);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  top: 5px;
+  left: 5px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  line-height: 1;
+  pointer-events: none;
 }
+.media-card-type.video { background: rgba(96,165,250,0.85); color: #fff; }
+.media-card-type.audio { background: rgba(167,139,250,0.85); color: #fff; }
+.media-card-type.image { background: rgba(52,211,153,0.85); color: #fff; }
 
+/* Duration badge — top-right */
 .media-card-duration {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  background-color: rgba(0,0,0,0.7);
-  padding: 2px 4px;
+  top: 5px;
+  right: 5px;
+  background: rgba(0,0,0,0.72);
+  padding: 2px 5px;
   border-radius: 4px;
   font-size: 9px;
   font-weight: 600;
   font-family: var(--font-mono);
   color: var(--text-bright);
+  pointer-events: none;
 }
+
+/* Processing spinner on thumbnail */
+.media-card-processing {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Filename info strip */
+.media-card-info {
+  padding: 5px 7px 3px;
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+/* Always-visible action strip */
+.media-card-actions {
+  display: flex;
+  border-top: 1px solid var(--border-dim);
+  height: 36px;
+  flex-shrink: 0;
+}
+.media-card-actions button {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  transition: background 0.12s, color 0.12s;
+  touch-action: manipulation;
+  min-width: 0;
+  padding: 0;
+}
+.media-card-actions button:hover { background: var(--bg-panel-light); color: var(--text-bright); }
+.media-card-actions button.action-drag { font-size: 14px; cursor: grab; flex: 0 0 32px; border-right: 1px solid var(--border-dim); }
+.media-card-actions button.action-add { color: #60a5fa; }
+.media-card-actions button.action-add:hover { background: rgba(96,165,250,0.1); }
+.media-card-actions button.action-remove { color: var(--text-muted); }
+.media-card-actions button.action-remove:hover { background: rgba(239,68,68,0.1); color: #f87171; }
+
+/* Legacy selectors kept for any existing references */
+.media-thumbnail-card { display: none; }
+.media-img { display: none; }
+.media-placeholder { display: none; }
+.media-card-title { display: none; }
 
 /* ==========================================================================
    Program Monitor (Video Player)
@@ -828,4 +892,40 @@ input[type="text"]:focus, select:focus, textarea:focus {
 
 .glow-box {
   animation: none;
+}
+
+/* ── Responsive layout for tablets / Android ─────────────────────────────── */
+@media (max-width: 1024px) {
+  .upper-section {
+    grid-template-columns: 260px 1fr 280px;
+  }
+}
+
+@media (max-width: 800px) {
+  /* On narrow screens: hide side panels, center panel takes full width */
+  .upper-section {
+    grid-template-columns: 1fr;
+  }
+  .panel:first-child,
+  .panel.last {
+    display: none;
+  }
+  .workspace-grid {
+    grid-template-rows: 1fr 240px;
+  }
+  /* Larger touch targets for track headers on mobile */
+  .track-header {
+    min-width: 80px;
+  }
+}
+
+/* ── Timeline playhead performance hint ──────────────────────────────────── */
+.timeline-playhead-line {
+  will-change: left;
+}
+
+/* ── Progress bar / handle performance hint ──────────────────────────────── */
+.time-scrubber-progress,
+.time-scrubber-handle {
+  will-change: width, left;
 }
