@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTimelineStore, SystemInfo } from "./store/timelineStore";
+import { playheadBus } from "./lib/playheadBus";
 import { MediaPool } from "./components/MediaPool";
 import { MonitorProgram } from "./components/MonitorProgram";
 import { Timeline } from "./components/Timeline";
@@ -39,7 +40,7 @@ function App() {
     getProjectJson, workspacePath,
     isDirty, markClean,
     zoom, setZoom,
-    selectedClipId, playhead, splitClip, deleteClip,
+    selectedClipId, splitClip, deleteClip,
     resetProject,
     setMediaServerPort,
   } = useTimelineStore();
@@ -71,11 +72,12 @@ function App() {
   const isDirtyRef = useRef(isDirty);
   const hasOpenProjectRef = useRef(hasOpenProject);
   const selectedClipIdRef = useRef(selectedClipId);
-  const playheadRef = useRef(playhead);
+  const playheadRef = useRef(0);
   useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
   useEffect(() => { hasOpenProjectRef.current = hasOpenProject; }, [hasOpenProject]);
   useEffect(() => { selectedClipIdRef.current = selectedClipId; }, [selectedClipId]);
-  useEffect(() => { playheadRef.current = playhead; }, [playhead]);
+  // Subscribe to bus for playhead ref — no Zustand dependency, no extra re-renders
+  useEffect(() => playheadBus.on((t) => { playheadRef.current = t; }), []);
 
   // --- Export Modal & Compilation State ---
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);

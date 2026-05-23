@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useMemo } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useTimelineStore, Clip } from "../store/timelineStore";
+import { playheadBus } from "../lib/playheadBus";
 import { Play, Pause, SkipBack, SkipForward, Volume2, Maximize2 } from "lucide-react";
 
 interface LyricLine {
@@ -23,15 +24,11 @@ function parseLRC(lrc: string): LyricLine[] {
 const safeSetCurrentTime = (media: HTMLMediaElement, time: number) => {
   if (!isFinite(time) || time < 0) return;
   try {
-    if (media.readyState >= 1) { // HAVE_METADATA or higher
+    if (media.readyState >= 1) {
       media.currentTime = time;
     } else {
       const onLoadedMetadata = () => {
-        try {
-          media.currentTime = time;
-        } catch (err) {
-          console.warn("Error setting currentTime in loadedmetadata:", err);
-        }
+        try { media.currentTime = time; } catch (err) { console.warn("Error setting currentTime in loadedmetadata:", err); }
         media.removeEventListener("loadedmetadata", onLoadedMetadata);
       };
       media.addEventListener("loadedmetadata", onLoadedMetadata);
@@ -44,6 +41,9 @@ const safeSetCurrentTime = (media: HTMLMediaElement, time: number) => {
 const toMediaUrl = (path: string, port: number) =>
   `http://127.0.0.1:${port}/file?path=${encodeURIComponent(path)}`;
 
+// Only open GStreamer decoders for clips within this window of the playhead
+const AUDIO_WINDOW_S = 120;
+
 export const MonitorProgram: React.FC = () => {
   const { playhead, setPlayhead, isPlaying, setIsPlaying, tracks, timelineDuration, lyricsText, mediaPool, mediaServerPort } = useTimelineStore();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -53,27 +53,35 @@ export const MonitorProgram: React.FC = () => {
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
 
-  // Audio clips rendered as hidden <audio> elements
-  const audioClips = tracks.filter((t) => t.type === "audio").flatMap((t) => t.clips);
+  // Audio windowing: only mount <audio> elements for clips near the playhead
+  const audioClips = useMemo(() => {
+    return tracks
+      .filter((t) => t.type === "audio")
+      .flatMap((t) => t.clips)
+      .filter((c) => {
+        const clipEnd = c.timeStart + (c.endOffset - c.startOffset) / c.speed;
+        return clipEnd >= playhead - AUDIO_WINDOW_S && c.timeStart <= playhead + AUDIO_WINDOW_S;
+      });
+  }, [tracks, playhead]);
+
   const audioRefsMap = useRef<Map<string, HTMLAudioElement>>(new Map());
 
-  // Refs to avoid stale closures in the RAF loop — only isPlaying triggers the effect
   const activeClipRef = useRef<Clip | null>(null);
   const videoSrcRef = useRef<string | null>(null);
   const timelineDurationRef = useRef(timelineDuration);
   const playheadRef = useRef(playhead);
-    // Records wall-clock anchor for non-video playback timing
   const playStartRef = useRef<{ wallTime: number; playhead: number } | null>(null);
   const videoPlayingRef = useRef<string | null>(null);
   const playingAudiosRef = useRef<Set<string>>(new Set());
+  // Rolling frame-time buffer for auto-pause guard
+  const frameBudgetRef = useRef<number[]>([]);
 
-  // Keep refs in sync with state (these effects are lightweight)
   useEffect(() => { playheadRef.current = playhead; }, [playhead]);
   useEffect(() => { timelineDurationRef.current = timelineDuration; }, [timelineDuration]);
   useEffect(() => { activeClipRef.current = activeClip; }, [activeClip]);
   useEffect(() => { videoSrcRef.current = videoSrc; }, [videoSrc]);
 
-  // --- Active clip detection (runs on every playhead change, including during playback) ---
+  // Active clip detection (runs at ~10fps via Zustand playhead updates)
   useEffect(() => {
     const videoTrack = tracks.find((t) => t.type === "video");
     if (!videoTrack) {
@@ -98,7 +106,7 @@ export const MonitorProgram: React.FC = () => {
         setVideoSrc(resolvedUrl);
         setImageSrc(null);
       } else if (clip?.type === "image") {
-        setImageSrc(convertFileSrc(clip.filePath)); // images are small, asset:// is fine
+        setImageSrc(convertFileSrc(clip.filePath));
         setVideoSrc(null);
       } else {
         setVideoSrc(null);
@@ -111,8 +119,7 @@ export const MonitorProgram: React.FC = () => {
     }
   }, [playhead, tracks, mediaPool, videoSrc]);
 
-  // Pause receiver — play is handled directly in handleTogglePlay to keep user-gesture context.
-  // CustomEvent dispatch breaks the WebKit2GTK gesture chain, so no .play() calls here.
+  // Pause receiver
   useEffect(() => {
     const handleToggle = (e: Event) => {
       const play = (e as CustomEvent).detail;
@@ -124,39 +131,29 @@ export const MonitorProgram: React.FC = () => {
         playingAudiosRef.current.clear();
       }
     };
-
     window.addEventListener("playback-toggle", handleToggle);
     return () => window.removeEventListener("playback-toggle", handleToggle);
   }, []);
 
-  // Unified play/pause effect driven by store isPlaying transition
+  // Unified play/pause effect
   useEffect(() => {
     const video = videoRef.current;
-    
+
     if (isPlaying) {
-      // 1. Play active video
       if (video && videoSrc && activeClipRef.current?.type === "video") {
         const localTime = (playheadRef.current - activeClipRef.current.timeStart) * activeClipRef.current.speed + activeClipRef.current.startOffset;
         safeSetCurrentTime(video, localTime);
-        
         const videoTrack = tracks.find((t) => t.type === "video");
-        const isVideoMuted = videoTrack?.muted || false;
-        video.muted = isVideoMuted;
-        video.volume = isVideoMuted ? 0 : 1.0;
-        
+        video.muted = videoTrack?.muted || false;
+        video.volume = video.muted ? 0 : 1.0;
         videoPlayingRef.current = activeClipRef.current.id;
-        video.play().catch((e) => {
-          console.warn("video play blocked:", e);
-          videoPlayingRef.current = null;
-        });
+        video.play().catch((e) => { console.warn("video play blocked:", e); videoPlayingRef.current = null; });
       }
 
-      // 2. Play active audio clips
       audioRefsMap.current.forEach((audio, clipId) => {
         const clip = audioClips.find((c) => c.id === clipId);
         if (!clip) return;
         const clipEnd = clip.timeStart + (clip.endOffset - clip.startOffset) / clip.speed;
-        
         const track = tracks.find((t) => t.id === clip.trackId);
         const isMuted = track?.muted || false;
 
@@ -165,19 +162,14 @@ export const MonitorProgram: React.FC = () => {
           safeSetCurrentTime(audio, localTime);
           audio.muted = isMuted;
           audio.volume = isMuted ? 0 : (clip.volume ?? 1.0);
-          
           playingAudiosRef.current.add(clip.id);
-          audio.play().catch((e) => {
-            console.warn("audio play blocked:", e);
-            playingAudiosRef.current.delete(clip.id);
-          });
+          audio.play().catch((e) => { console.warn("audio play blocked:", e); playingAudiosRef.current.delete(clip.id); });
         } else {
           audio.pause();
           playingAudiosRef.current.delete(clip.id);
         }
       });
     } else {
-      // Pause everything
       if (video) video.pause();
       audioRefsMap.current.forEach((a) => a.pause());
       videoPlayingRef.current = null;
@@ -185,11 +177,10 @@ export const MonitorProgram: React.FC = () => {
     }
   }, [isPlaying, videoSrc, tracks, audioClips]);
 
-  // Sync video & audio currentTime when scrubbing (not playing)
+  // Scrub sync (when not playing, sync media currentTime to playhead at ~10fps)
   useEffect(() => {
     if (isPlaying) return;
 
-    // Sync video
     const video = videoRef.current;
     if (video && activeClip && activeClip.type === "video") {
       const targetLocalTime = (playhead - activeClip.timeStart) * activeClip.speed + activeClip.startOffset;
@@ -198,7 +189,6 @@ export const MonitorProgram: React.FC = () => {
       }
     }
 
-    // Sync audio
     audioRefsMap.current.forEach((audio, clipId) => {
       const clip = audioClips.find((c) => c.id === clipId);
       if (!clip) return;
@@ -212,7 +202,7 @@ export const MonitorProgram: React.FC = () => {
     });
   }, [playhead, activeClip, isPlaying, audioClips]);
 
-  // RAF loop — driven by isPlaying, reads store values dynamically to avoid stale closures
+  // RAF loop — decoupled from Zustand: emits bus at 60fps, syncs Zustand at ~10fps
   useEffect(() => {
     if (!isPlaying) {
       if (rafRef.current !== null) {
@@ -222,10 +212,32 @@ export const MonitorProgram: React.FC = () => {
       return;
     }
 
-    // Anchor the wall-clock reference point when playback starts
     playStartRef.current = { wallTime: Date.now(), playhead: playheadRef.current };
+    frameBudgetRef.current = [];
+
+    let frameCounter = 0;
+    let lastFrameTime = performance.now();
 
     const syncPlayhead = () => {
+      // Auto-pause guard: if avg frame time exceeds ~80ms (< 13fps), system is overloaded
+      const now = performance.now();
+      const dt = now - lastFrameTime;
+      lastFrameTime = now;
+
+      if (dt > 0 && dt < 5000) { // ignore first/stalled frames
+        frameBudgetRef.current.push(dt);
+        if (frameBudgetRef.current.length > 10) frameBudgetRef.current.shift();
+        if (frameBudgetRef.current.length >= 10) {
+          const avg = frameBudgetRef.current.reduce((a, b) => a + b, 0) / frameBudgetRef.current.length;
+          if (avg > 80) {
+            console.warn(`[auto-pause] avg frame time ${avg.toFixed(0)}ms — pausing to prevent freeze`);
+            setIsPlaying(false);
+            window.dispatchEvent(new CustomEvent("playback-toggle", { detail: false }));
+            return; // don't reschedule
+          }
+        }
+      }
+
       const state = useTimelineStore.getState();
       const currentTracks = state.tracks;
       const currentDuration = state.timelineDuration;
@@ -233,7 +245,7 @@ export const MonitorProgram: React.FC = () => {
       const video = videoRef.current;
       const activeCl = activeClipRef.current;
       const vidSrc = videoSrcRef.current;
-      
+
       const start = playStartRef.current;
       if (!start) return;
 
@@ -242,16 +254,24 @@ export const MonitorProgram: React.FC = () => {
 
       if (currentDuration > 0 && next >= currentDuration) {
         setPlayhead(currentDuration);
+        playheadBus.emit(currentDuration);
         playheadRef.current = currentDuration;
         setIsPlaying(false);
         window.dispatchEvent(new CustomEvent("playback-toggle", { detail: false }));
         return;
       }
 
-      setPlayhead(next);
+      // Always emit to bus at 60fps — Timeline DOM updates without React re-renders
+      playheadBus.emit(next);
       playheadRef.current = next;
 
-      // Sync active video if present
+      // Sync Zustand at ~10fps (every 6 frames) — triggers re-renders for lyric/time display
+      frameCounter++;
+      if (frameCounter % 6 === 0) {
+        setPlayhead(next);
+      }
+
+      // Sync active video
       if (video && vidSrc && activeCl && activeCl.type === "video") {
         const videoTrack = currentTracks.find((t) => t.type === "video");
         const isVideoMuted = videoTrack?.muted || false;
@@ -264,15 +284,10 @@ export const MonitorProgram: React.FC = () => {
           video.playbackRate = activeCl.speed;
           safeSetCurrentTime(video, targetLocalTime);
           videoPlayingRef.current = activeCl.id;
-          video.play().catch((e) => {
-            console.warn("video sync play blocked:", e);
-            videoPlayingRef.current = null;
-          });
+          video.play().catch((e) => { console.warn("video sync play blocked:", e); videoPlayingRef.current = null; });
         } else {
           const drift = Math.abs(video.currentTime - targetLocalTime);
-          if (drift > 0.04) {
-            safeSetCurrentTime(video, targetLocalTime);
-          }
+          if (drift > 0.04) safeSetCurrentTime(video, targetLocalTime);
         }
       } else {
         if (videoPlayingRef.current !== null) {
@@ -281,27 +296,17 @@ export const MonitorProgram: React.FC = () => {
         }
       }
 
-      // Sync active audio clips
+      // Sync audio clips
       const currentAudioClips = currentTracks.filter((t) => t.type === "audio").flatMap((t) => t.clips);
-      
-      // Pause audios that are no longer active
+
       audioRefsMap.current.forEach((audio, clipId) => {
         const clip = currentAudioClips.find((c) => c.id === clipId);
-        if (!clip) {
-          if (!audio.paused) audio.pause();
-          playingAudiosRef.current.delete(clipId);
-          return;
-        }
+        if (!clip) { if (!audio.paused) audio.pause(); playingAudiosRef.current.delete(clipId); return; }
         const clipEnd = clip.timeStart + (clip.endOffset - clip.startOffset) / clip.speed;
         const inRange = next >= clip.timeStart && next < clipEnd;
-
-        if (!inRange) {
-          if (!audio.paused) audio.pause();
-          playingAudiosRef.current.delete(clipId);
-        }
+        if (!inRange) { if (!audio.paused) audio.pause(); playingAudiosRef.current.delete(clipId); }
       });
 
-      // Play/sync audios that are active
       currentAudioClips.forEach((clip) => {
         const audio = audioRefsMap.current.get(clip.id);
         if (!audio) return;
@@ -312,22 +317,16 @@ export const MonitorProgram: React.FC = () => {
           const localTime = (next - clip.timeStart) * clip.speed + clip.startOffset;
           const track = currentTracks.find((t) => t.id === clip.trackId);
           const isMuted = track?.muted || false;
-
           audio.muted = isMuted;
           audio.volume = isMuted ? 0 : (clip.volume ?? 1.0);
 
           if (!playingAudiosRef.current.has(clip.id)) {
             safeSetCurrentTime(audio, localTime);
             playingAudiosRef.current.add(clip.id);
-            audio.play().catch((e) => {
-              console.warn("audio sync play blocked:", e);
-              playingAudiosRef.current.delete(clip.id);
-            });
+            audio.play().catch((e) => { console.warn("audio sync play blocked:", e); playingAudiosRef.current.delete(clip.id); });
           } else {
             const drift = Math.abs(audio.currentTime - localTime);
-            if (drift > 0.25) {
-              safeSetCurrentTime(audio, localTime);
-            }
+            if (drift > 0.25) safeSetCurrentTime(audio, localTime);
           }
         }
       });
@@ -337,10 +336,7 @@ export const MonitorProgram: React.FC = () => {
 
     rafRef.current = requestAnimationFrame(syncPlayhead);
     return () => {
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
+      if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       const video = videoRef.current;
       if (video) video.pause();
       audioRefsMap.current.forEach((a) => a.pause());
@@ -349,7 +345,7 @@ export const MonitorProgram: React.FC = () => {
     };
   }, [isPlaying, setPlayhead, setIsPlaying]);
 
-  // --- Lyric overlay ---
+  // Lyric overlay
   const parsedLyrics = useMemo(() => parseLRC(lyricsText), [lyricsText]);
   const currentLyricLine = useMemo(() => {
     let line = "";
@@ -359,15 +355,12 @@ export const MonitorProgram: React.FC = () => {
     return line;
   }, [parsedLyrics, playhead]);
 
-  // --- Controls ---
-
+  // Controls
   const handleTogglePlay = () => {
     const nextPlaying = !isPlaying;
     setIsPlaying(nextPlaying);
 
     if (nextPlaying) {
-      // WebKit2GTK breaks the user-gesture chain across CustomEvent dispatches, so
-      // video.play() / audio.play() must be called directly here — not in a listener.
       const video = videoRef.current;
       if (video && videoSrc && activeClip?.type === "video") {
         const localTime = (playhead - activeClip.timeStart) * activeClip.speed + activeClip.startOffset;
@@ -377,8 +370,6 @@ export const MonitorProgram: React.FC = () => {
         video.volume = 1.0;
         video.play().catch(() => {});
       }
-      // Play in-range audio clips and prime out-of-range ones so the RAF loop can
-      // call .play() on them later without needing another user gesture.
       audioRefsMap.current.forEach((audio, clipId) => {
         const clip = audioClips.find((c) => c.id === clipId);
         if (!clip) return;
@@ -402,13 +393,17 @@ export const MonitorProgram: React.FC = () => {
   };
 
   const handleSkipStart = () => {
-    setPlayhead(0);
+    const time = 0;
+    setPlayhead(time);
+    playheadBus.emit(time);
     if (videoRef.current) safeSetCurrentTime(videoRef.current, activeClip ? activeClip.startOffset : 0);
     audioRefsMap.current.forEach((a) => { a.pause(); safeSetCurrentTime(a, 0); });
   };
 
   const handleSkipEnd = () => {
-    setPlayhead(timelineDuration);
+    const time = timelineDuration;
+    setPlayhead(time);
+    playheadBus.emit(time);
     if (isPlaying) {
       setIsPlaying(false);
       window.dispatchEvent(new CustomEvent("playback-toggle", { detail: false }));
@@ -418,7 +413,9 @@ export const MonitorProgram: React.FC = () => {
   const handleScrub = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const percent = (e.clientX - rect.left) / rect.width;
-    setPlayhead(Math.max(0, percent * (timelineDuration || 10)));
+    const time = Math.max(0, percent * (timelineDuration || 10));
+    setPlayhead(time);
+    playheadBus.emit(time);
   };
 
   const formatTime = (time: number) => {
@@ -433,7 +430,7 @@ export const MonitorProgram: React.FC = () => {
 
   return (
     <div className="monitor-container" style={{ padding: "16px" }}>
-      {/* Hidden audio elements */}
+      {/* Hidden audio elements — only clips within ±120s of playhead to limit GStreamer decoder count */}
       <div style={{ display: "none" }}>
         {audioClips.map((clip) => (
           <audio
@@ -474,28 +471,12 @@ export const MonitorProgram: React.FC = () => {
           </div>
         )}
 
-        {/* Lyric overlay */}
         {currentLyricLine && (
-          <div style={{
-            position: "absolute",
-            bottom: "12%",
-            left: 0,
-            right: 0,
-            textAlign: "center",
-            pointerEvents: "none",
-            padding: "0 16px",
-          }}>
+          <div style={{ position: "absolute", bottom: "12%", left: 0, right: 0, textAlign: "center", pointerEvents: "none", padding: "0 16px" }}>
             <span style={{
-              display: "inline-block",
-              color: "#fff",
-              fontSize: "18px",
-              fontWeight: 700,
-              lineHeight: 1.3,
+              display: "inline-block", color: "#fff", fontSize: "18px", fontWeight: 700, lineHeight: 1.3,
               textShadow: "0 1px 8px rgba(0,0,0,0.9), 0 0 24px rgba(0,0,0,0.6)",
-              background: "rgba(0,0,0,0.35)",
-              padding: "4px 12px",
-              borderRadius: "6px",
-              backdropFilter: "blur(4px)",
+              background: "rgba(0,0,0,0.35)", padding: "4px 12px", borderRadius: "6px", backdropFilter: "blur(4px)",
             }}>
               {currentLyricLine}
             </span>

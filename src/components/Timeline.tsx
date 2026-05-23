@@ -1,11 +1,12 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { useTimelineStore, Clip } from "../store/timelineStore";
+import { useShallow } from "zustand/react/shallow";
+import { playheadBus } from "../lib/playheadBus";
 import { Scissors, Trash2, ZoomIn, ZoomOut, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Magnet, ArrowLeftToLine, ArrowRightToLine } from "lucide-react";
 
 export const Timeline: React.FC = () => {
   const {
     tracks,
-    playhead,
     setPlayhead,
     zoom,
     setZoom,
@@ -25,15 +26,34 @@ export const Timeline: React.FC = () => {
     toggleTrackMute,
     toggleTrackHide,
     addClip,
-  } = useTimelineStore();
+  } = useTimelineStore(useShallow((s) => ({
+    tracks: s.tracks,
+    setPlayhead: s.setPlayhead,
+    zoom: s.zoom,
+    setZoom: s.setZoom,
+    timelineDuration: s.timelineDuration,
+    selectedClipId: s.selectedClipId,
+    setSelectedClipId: s.setSelectedClipId,
+    splitClip: s.splitClip,
+    deleteClip: s.deleteClip,
+    moveClip: s.moveClip,
+    updateClipProperties: s.updateClipProperties,
+    rippleDeleteClip: s.rippleDeleteClip,
+    rippleTrimLeft: s.rippleTrimLeft,
+    rippleTrimRight: s.rippleTrimRight,
+    isPlaying: s.isPlaying,
+    setIsPlaying: s.setIsPlaying,
+    toggleTrackLock: s.toggleTrackLock,
+    toggleTrackMute: s.toggleTrackMute,
+    toggleTrackHide: s.toggleTrackHide,
+    addClip: s.addClip,
+  })));
 
   const rulerCanvasRef = useRef<HTMLCanvasElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const playheadLineRef = useRef<HTMLDivElement>(null);
 
-  // Drag state: moving a clip
   const [draggedClip, setDraggedClip] = useState<{ clip: Clip; startX: number; originalTimeStart: number } | null>(null);
-
-  // Resize state: dragging a clip edge
   const [resizeState, setResizeState] = useState<{
     clip: Clip;
     edge: "left" | "right";
@@ -44,16 +64,31 @@ export const Timeline: React.FC = () => {
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [snappingEnabled, setSnappingEnabled] = useState(true);
   const [snapLineTime, setSnapLineTime] = useState<number | null>(null);
+  const [scrollLeft, setScrollLeft] = useState(0);
 
-  // Stable refs to avoid stale closures in keyboard/wheel handlers
+  // Stable refs — updated synchronously, avoid stale closures in RAF/event handlers
   const zoomRef = useRef(zoom);
   const isPlayingRef = useRef(isPlaying);
   const selectedClipIdRef = useRef(selectedClipId);
-  const playheadRef = useRef(playhead);
+  const playheadRef = useRef(0); // updated by playheadBus at 60fps
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
   useEffect(() => { selectedClipIdRef.current = selectedClipId; }, [selectedClipId]);
-  useEffect(() => { playheadRef.current = playhead; }, [playhead]);
+
+  // Subscribe to bus: update ref + DOM element at 60fps — zero React re-renders
+  useEffect(() => {
+    return playheadBus.on((t) => {
+      playheadRef.current = t;
+      const el = playheadLineRef.current;
+      if (el) el.style.left = `${t * zoomRef.current + 120}px`;
+    });
+  }, []);
+
+  // When zoom changes (not 60fps), reposition the playhead line
+  useEffect(() => {
+    const el = playheadLineRef.current;
+    if (el) el.style.left = `${playheadRef.current * zoom + 120}px`;
+  }, [zoom]);
 
   // 1. Draw Canvas Ruler
   useEffect(() => {
@@ -81,9 +116,9 @@ export const Timeline: React.FC = () => {
     ctx.textAlign = "center";
 
     let tickSpacing = 1;
-    if (zoom < 0.5) tickSpacing = 600; // 10 minutes
-    else if (zoom < 2) tickSpacing = 120; // 2 minutes
-    else if (zoom < 5) tickSpacing = 60;  // 1 minute
+    if (zoom < 0.5) tickSpacing = 600;
+    else if (zoom < 2) tickSpacing = 120;
+    else if (zoom < 5) tickSpacing = 60;
     else if (zoom < 15) tickSpacing = 10;
     else if (zoom < 35) tickSpacing = 5;
     else if (zoom < 80) tickSpacing = 2;
@@ -105,17 +140,19 @@ export const Timeline: React.FC = () => {
     }
   }, [zoom, timelineDuration]);
 
-  // 2. Playhead auto-scroll during playback
+  // 2. Playhead auto-scroll during playback — via bus, no Zustand subscription
   useEffect(() => {
-    const el = scrollAreaRef.current;
-    if (!el || !isPlaying) return;
-    const px = playhead * zoom;
-    const viewLeft = el.scrollLeft + 120;
-    const viewRight = el.scrollLeft + el.clientWidth;
-    if (px > viewRight - 50 || px < viewLeft) {
-      el.scrollLeft = px - 200;
-    }
-  }, [playhead, zoom, isPlaying]);
+    return playheadBus.on((t) => {
+      const el = scrollAreaRef.current;
+      if (!el || !isPlayingRef.current) return;
+      const px = t * zoomRef.current;
+      const viewLeft = el.scrollLeft + 120;
+      const viewRight = el.scrollLeft + el.clientWidth;
+      if (px > viewRight - 50 || px < viewLeft) {
+        el.scrollLeft = px - 200;
+      }
+    });
+  }, []);
 
   // 3. Ctrl+scroll zoom
   useEffect(() => {
@@ -131,9 +168,9 @@ export const Timeline: React.FC = () => {
     return () => el.removeEventListener("wheel", handleWheel);
   }, [setZoom]);
 
-  const trimClipLeftAtPlayhead = (clipId: string, time: number) => {
+  const trimClipLeftAtPlayhead = useCallback((clipId: string, time: number) => {
     let clip: Clip | null = null;
-    for (const track of tracks) {
+    for (const track of useTimelineStore.getState().tracks) {
       const found = track.clips.find((c) => c.id === clipId);
       if (found) { clip = found; break; }
     }
@@ -142,15 +179,12 @@ export const Timeline: React.FC = () => {
     if (time <= clip.timeStart || time >= clipEnd) return;
     const offsetDelta = (time - clip.timeStart) * clip.speed;
     const newStartOffset = clip.startOffset + offsetDelta;
-    updateClipProperties(clipId, {
-      startOffset: newStartOffset,
-      timeStart: time
-    });
-  };
+    updateClipProperties(clipId, { startOffset: newStartOffset, timeStart: time });
+  }, [updateClipProperties]);
 
-  const trimClipRightAtPlayhead = (clipId: string, time: number) => {
+  const trimClipRightAtPlayhead = useCallback((clipId: string, time: number) => {
     let clip: Clip | null = null;
-    for (const track of tracks) {
+    for (const track of useTimelineStore.getState().tracks) {
       const found = track.clips.find((c) => c.id === clipId);
       if (found) { clip = found; break; }
     }
@@ -159,12 +193,10 @@ export const Timeline: React.FC = () => {
     if (time <= clip.timeStart || time >= clipEnd) return;
     const offsetDelta = (time - clip.timeStart) * clip.speed;
     const newEndOffset = clip.startOffset + offsetDelta;
-    updateClipProperties(clipId, {
-      endOffset: newEndOffset
-    });
-  };
+    updateClipProperties(clipId, { endOffset: newEndOffset });
+  }, [updateClipProperties]);
 
-  // 4. Keyboard shortcuts (Space, S, Delete/Backspace, Q, W, B)
+  // 4. Keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
@@ -245,79 +277,88 @@ export const Timeline: React.FC = () => {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [setIsPlaying, setZoom, splitClip, deleteClip, tracks]);
+  }, [setIsPlaying, setZoom, splitClip, deleteClip, rippleDeleteClip, rippleTrimLeft, rippleTrimRight, trimClipLeftAtPlayhead, trimClipRightAtPlayhead]);
 
   // 5. Playhead scrubbing
-  const handleRulerMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const updatePlayheadFromEvent = useCallback((e: React.MouseEvent) => {
+    const rect = scrollAreaRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const relX = e.clientX - rect.left - 120 + (scrollAreaRef.current?.scrollLeft || 0);
+    const time = Math.max(0, relX / zoomRef.current);
+    setPlayhead(time);
+    playheadBus.emit(time); // immediate DOM update without waiting for Zustand
+  }, [setPlayhead]);
+
+  const handleRulerMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (isPlayingRef.current) {
       setIsPlaying(false);
       window.dispatchEvent(new CustomEvent("playback-toggle", { detail: false }));
     }
     setIsScrubbing(true);
     updatePlayheadFromEvent(e);
-  };
-  const handleRulerMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  }, [setIsPlaying, updatePlayheadFromEvent]);
+
+  const handleRulerMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isScrubbing) return;
     updatePlayheadFromEvent(e);
-  };
-  const updatePlayheadFromEvent = (e: React.MouseEvent) => {
-    const rect = scrollAreaRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const relX = e.clientX - rect.left - 120 + (scrollAreaRef.current?.scrollLeft || 0);
-    setPlayhead(Math.max(0, relX / zoom));
-  };
+  }, [isScrubbing, updatePlayheadFromEvent]);
 
-  // 6. Global mouse-up: clears drag / resize / scrub
-  const handleGlobalMouseUp = () => {
+  // 6. Global mouse-up
+  const handleGlobalMouseUp = useCallback(() => {
     setIsScrubbing(false);
     setDraggedClip(null);
     setResizeState(null);
     setSnapLineTime(null);
-  };
+  }, []);
+
   useEffect(() => {
     window.addEventListener("mouseup", handleGlobalMouseUp);
     return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
-  }, []);
+  }, [handleGlobalMouseUp]);
 
   // 7. Zoom buttons
-  const zoomIn = () => setZoom(zoom * 1.2);
-  const zoomOut = () => setZoom(zoom / 1.2);
+  const zoomIn = useCallback(() => setZoom(zoomRef.current * 1.2), [setZoom]);
+  const zoomOut = useCallback(() => setZoom(zoomRef.current / 1.2), [setZoom]);
 
-  // 9. Toolbar actions
-  const handleSplitActiveClip = () => {
-    if (selectedClipId) {
-      const clipTrack = tracks.find((t) => t.clips.some((c) => c.id === selectedClipId));
+  // 8. Toolbar actions — use playheadRef.current (no stale closure)
+  const handleSplitActiveClip = useCallback(() => {
+    const id = selectedClipIdRef.current;
+    if (id) {
+      const currentTracks = useTimelineStore.getState().tracks;
+      const clipTrack = currentTracks.find((t) => t.clips.some((c) => c.id === id));
       if (clipTrack?.locked) return;
-      splitClip(selectedClipId, playhead);
+      splitClip(id, playheadRef.current);
     }
-  };
-  const handleDeleteActiveClip = () => {
-    if (selectedClipId) {
-      const clipTrack = tracks.find((t) => t.clips.some((c) => c.id === selectedClipId));
-      if (clipTrack?.locked) return;
-      deleteClip(selectedClipId);
-    }
-  };
+  }, [splitClip]);
 
-  // 10. Clip drag (move)
-  const handleClipMouseDown = (e: React.MouseEvent, clip: Clip) => {
+  const handleDeleteActiveClip = useCallback(() => {
+    const id = selectedClipIdRef.current;
+    if (id) {
+      const currentTracks = useTimelineStore.getState().tracks;
+      const clipTrack = currentTracks.find((t) => t.clips.some((c) => c.id === id));
+      if (clipTrack?.locked) return;
+      deleteClip(id);
+    }
+  }, [deleteClip]);
+
+  // 9. Clip drag (move)
+  const handleClipMouseDown = useCallback((e: React.MouseEvent, clip: Clip) => {
     e.stopPropagation();
-    const track = tracks.find((t) => t.id === clip.trackId);
+    const track = useTimelineStore.getState().tracks.find((t) => t.id === clip.trackId);
     if (track?.locked) {
       setSelectedClipId(clip.id);
       return;
     }
     setSelectedClipId(clip.id);
     setDraggedClip({ clip, startX: e.clientX, originalTimeStart: clip.timeStart });
-  };
+  }, [setSelectedClipId]);
 
-  // 11. Clip resize (edge drag)
-  const handleResizeMouseDown = (e: React.MouseEvent, clip: Clip, edge: "left" | "right") => {
+  // 10. Clip resize
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent, clip: Clip, edge: "left" | "right") => {
     e.stopPropagation();
     e.preventDefault();
-    const track = tracks.find((t) => t.id === clip.trackId);
+    const track = useTimelineStore.getState().tracks.find((t) => t.id === clip.trackId);
     if (track?.locked) return;
-
     setSelectedClipId(clip.id);
     setResizeState({
       clip,
@@ -325,24 +366,20 @@ export const Timeline: React.FC = () => {
       startX: e.clientX,
       original: { startOffset: clip.startOffset, endOffset: clip.endOffset, timeStart: clip.timeStart },
     });
-  };
+  }, [setSelectedClipId]);
 
-  // 12. Mouse move handler for drag + resize
+  // 11. Mouse move handler for drag + resize
   const handleTimelineAreaMouseMove = (e: React.MouseEvent) => {
     const getSnapTime = (targetTime: number, excludeClipId: string, snapThreshold = 0.25): number | null => {
-      if (Math.abs(targetTime - playhead) < snapThreshold) {
-        return playhead;
+      if (Math.abs(targetTime - playheadRef.current) < snapThreshold) {
+        return playheadRef.current;
       }
       for (const track of tracks) {
         for (const other of track.clips) {
           if (other.id === excludeClipId) continue;
           const otherEnd = other.timeStart + (other.endOffset - other.startOffset) / other.speed;
-          if (Math.abs(targetTime - other.timeStart) < snapThreshold) {
-            return other.timeStart;
-          }
-          if (Math.abs(targetTime - otherEnd) < snapThreshold) {
-            return otherEnd;
-          }
+          if (Math.abs(targetTime - other.timeStart) < snapThreshold) return other.timeStart;
+          if (Math.abs(targetTime - otherEnd) < snapThreshold) return otherEnd;
         }
       }
       return null;
@@ -351,17 +388,13 @@ export const Timeline: React.FC = () => {
     if (resizeState) {
       const { clip, edge, startX, original } = resizeState;
       const deltaTime = (e.clientX - startX) / zoom;
-
       let snappedTime: number | null = null;
 
       if (edge === "right") {
         let targetEnd = original.timeStart + (original.endOffset + deltaTime * clip.speed - clip.startOffset) / clip.speed;
         if (snappingEnabled) {
           const snapped = getSnapTime(targetEnd, clip.id);
-          if (snapped !== null) {
-            targetEnd = snapped;
-            snappedTime = snapped;
-          }
+          if (snapped !== null) { targetEnd = snapped; snappedTime = snapped; }
         }
         setSnapLineTime(snappedTime);
         let newEnd = clip.startOffset + (targetEnd - original.timeStart) * clip.speed;
@@ -371,10 +404,7 @@ export const Timeline: React.FC = () => {
         let newTimeStart = original.timeStart + deltaTime;
         if (snappingEnabled) {
           const snapped = getSnapTime(newTimeStart, clip.id);
-          if (snapped !== null) {
-            newTimeStart = snapped;
-            snappedTime = snapped;
-          }
+          if (snapped !== null) { newTimeStart = snapped; snappedTime = snapped; }
         }
         setSnapLineTime(snappedTime);
         const actualDeltaTime = newTimeStart - original.timeStart;
@@ -389,20 +419,16 @@ export const Timeline: React.FC = () => {
     if (draggedClip) {
       const deltaTime = (e.clientX - draggedClip.startX) / zoom;
       let newTimeStart = Math.max(0, draggedClip.originalTimeStart + deltaTime);
-
       let snappedTime: number | null = null;
 
       if (snappingEnabled) {
-        const snapThreshold = 0.25; // 250ms snap window
+        const snapThreshold = 0.25;
         const clipDur = (draggedClip.clip.endOffset - draggedClip.clip.startOffset) / draggedClip.clip.speed;
-
-        // Proximity check on left edge
         const leftSnap = getSnapTime(newTimeStart, draggedClip.clip.id, snapThreshold);
         if (leftSnap !== null) {
           newTimeStart = leftSnap;
           snappedTime = leftSnap;
         } else {
-          // Proximity check on right edge
           const rightSnap = getSnapTime(newTimeStart + clipDur, draggedClip.clip.id, snapThreshold);
           if (rightSnap !== null) {
             newTimeStart = rightSnap - clipDur;
@@ -410,11 +436,14 @@ export const Timeline: React.FC = () => {
           }
         }
       }
-
       setSnapLineTime(snappedTime);
       moveClip(draggedClip.clip.id, draggedClip.clip.trackId, newTimeStart);
     }
   };
+
+  const handleScrollArea = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setScrollLeft(e.currentTarget.scrollLeft);
+  }, []);
 
   return (
     <div className="timeline-container">
@@ -433,7 +462,7 @@ export const Timeline: React.FC = () => {
           <button
             className="btn-secondary"
             style={{ padding: "4px 8px", fontSize: "11px" }}
-            onClick={() => selectedClipId && trimClipLeftAtPlayhead(selectedClipId, playhead)}
+            onClick={() => { const id = selectedClipIdRef.current; if (id) trimClipLeftAtPlayhead(id, playheadRef.current); }}
             disabled={!selectedClipId}
             title="Trim Start to Playhead (Shift+Q)"
           >
@@ -442,7 +471,7 @@ export const Timeline: React.FC = () => {
           <button
             className="btn-secondary"
             style={{ padding: "4px 8px", fontSize: "11px", color: "var(--text-bright)", borderColor: "rgba(56, 189, 248, 0.3)" }}
-            onClick={() => selectedClipId && rippleTrimLeft(selectedClipId, playhead)}
+            onClick={() => { const id = selectedClipIdRef.current; if (id) rippleTrimLeft(id, playheadRef.current); }}
             disabled={!selectedClipId}
             title="Ripple Trim Start (Q)"
           >
@@ -451,7 +480,7 @@ export const Timeline: React.FC = () => {
           <button
             className="btn-secondary"
             style={{ padding: "4px 8px", fontSize: "11px" }}
-            onClick={() => selectedClipId && trimClipRightAtPlayhead(selectedClipId, playhead)}
+            onClick={() => { const id = selectedClipIdRef.current; if (id) trimClipRightAtPlayhead(id, playheadRef.current); }}
             disabled={!selectedClipId}
             title="Trim End to Playhead (Shift+W)"
           >
@@ -460,7 +489,7 @@ export const Timeline: React.FC = () => {
           <button
             className="btn-secondary"
             style={{ padding: "4px 8px", fontSize: "11px", color: "var(--text-bright)", borderColor: "rgba(56, 189, 248, 0.3)" }}
-            onClick={() => selectedClipId && rippleTrimRight(selectedClipId, playhead)}
+            onClick={() => { const id = selectedClipIdRef.current; if (id) rippleTrimRight(id, playheadRef.current); }}
             disabled={!selectedClipId}
             title="Ripple Trim End (W)"
           >
@@ -478,7 +507,7 @@ export const Timeline: React.FC = () => {
           <button
             className="btn-secondary"
             style={{ padding: "4px 8px", fontSize: "11px", color: "#f87171", borderColor: "rgba(239, 68, 68, 0.3)" }}
-            onClick={() => selectedClipId && rippleDeleteClip(selectedClipId)}
+            onClick={() => { const id = selectedClipIdRef.current; if (id) rippleDeleteClip(id); }}
             disabled={!selectedClipId}
             title="Ripple Delete (Shift+Del)"
           >
@@ -489,8 +518,8 @@ export const Timeline: React.FC = () => {
         <div className="toolbar-group" style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <button
             className={`btn-secondary ${snappingEnabled ? "active" : ""}`}
-            style={{ 
-              padding: "4px 8px", 
+            style={{
+              padding: "4px 8px",
               fontSize: "11px",
               borderColor: snappingEnabled ? "var(--border-focus)" : "var(--border-normal)",
               color: snappingEnabled ? "#fff" : "var(--text-muted)",
@@ -526,6 +555,7 @@ export const Timeline: React.FC = () => {
         className="timeline-scrollview"
         ref={scrollAreaRef}
         onMouseMove={handleTimelineAreaMouseMove}
+        onScroll={handleScrollArea}
         style={{ userSelect: "none", cursor: resizeState ? "ew-resize" : draggedClip ? "grabbing" : "default" }}
       >
         <div style={{ position: "relative", minWidth: "100%", width: "fit-content" }}>
@@ -548,14 +578,16 @@ export const Timeline: React.FC = () => {
               const isHidden = !!track.hidden;
               const isLocked = !!track.locked;
 
+              // Clip viewport culling — only render clips overlapping the scroll viewport
+              const viewStartTime = scrollLeft / zoom;
+              const viewEndTime = (scrollLeft + (scrollAreaRef.current?.clientWidth || 1200)) / zoom;
+              const buffer = 2; // 2s render buffer outside viewport
+
               return (
                 <div
                   key={track.id}
                   className={`track-row ${track.type}`}
-                  style={{
-                    opacity: isHidden ? 0.35 : 1,
-                    position: "relative",
-                  }}
+                  style={{ opacity: isHidden ? 0.35 : 1, position: "relative" }}
                 >
                   <div className="track-header">
                     <span className="track-name">{track.name}</span>
@@ -586,13 +618,8 @@ export const Timeline: React.FC = () => {
 
                   <div
                     className="track-timeline-content"
-                    onDoubleClick={(e) => {
-                      if (e.target === e.currentTarget) setSelectedClipId(null);
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = "copy";
-                    }}
+                    onDoubleClick={(e) => { if (e.target === e.currentTarget) setSelectedClipId(null); }}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
                     onDrop={(e) => {
                       e.preventDefault();
                       try {
@@ -601,7 +628,6 @@ export const Timeline: React.FC = () => {
                         const media = JSON.parse(mediaStr);
                         if (!media) return;
 
-                        // Calculate drop position in seconds
                         const rect = e.currentTarget.getBoundingClientRect();
                         const dropX = e.clientX - rect.left + (scrollAreaRef.current?.scrollLeft || 0);
                         const dropTime = Math.max(0, dropX / zoom);
@@ -610,15 +636,8 @@ export const Timeline: React.FC = () => {
                         const isImage = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(ext);
                         const isAudio = !media.width && !media.height && !isImage;
 
-                        // Validate that media type matches the track type
-                        if (track.type === "audio" && !isAudio) {
-                          alert("Only audio clips can be dropped onto the Audio Track!");
-                          return;
-                        }
-                        if (track.type === "video" && isAudio) {
-                          alert("Only video or image clips can be dropped onto the Video Track!");
-                          return;
-                        }
+                        if (track.type === "audio" && !isAudio) { alert("Only audio clips can be dropped onto the Audio Track!"); return; }
+                        if (track.type === "video" && isAudio) { alert("Only video or image clips can be dropped onto the Video Track!"); return; }
 
                         const clipType: Clip["type"] = isImage ? "image" : isAudio ? "audio" : "video";
                         const sourceDuration = isImage ? 9999 : media.duration;
@@ -652,20 +671,22 @@ export const Timeline: React.FC = () => {
                     {isLocked && (
                       <div
                         style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          background: "repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.25) 0, rgba(0, 0, 0, 0.25) 10px, transparent 10px, transparent 20px)",
-                          pointerEvents: "none",
-                          zIndex: 3,
-                          opacity: 0.4,
+                          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+                          background: "repeating-linear-gradient(45deg, rgba(0,0,0,0.25) 0, rgba(0,0,0,0.25) 10px, transparent 10px, transparent 20px)",
+                          pointerEvents: "none", zIndex: 3, opacity: 0.4,
                         }}
                       />
                     )}
+
                     {track.clips.map((clip) => {
                       const clipDuration = (clip.endOffset - clip.startOffset) / clip.speed;
+                      const clipEnd = clip.timeStart + clipDuration;
+
+                      // Virtualization: skip clips outside the visible viewport + buffer
+                      if (clipEnd < viewStartTime - buffer || clip.timeStart > viewEndTime + buffer) {
+                        return null;
+                      }
+
                       const leftPx = clip.timeStart * zoom;
                       const widthPx = Math.max(4, clipDuration * zoom);
                       const isSelected = selectedClipId === clip.id;
@@ -683,20 +704,13 @@ export const Timeline: React.FC = () => {
                           }}
                           onMouseDown={(e) => handleClipMouseDown(e, clip)}
                         >
-                          {/* Left resize handle */}
                           {!isLocked && (
                             <div
                               onMouseDown={(e) => handleResizeMouseDown(e, clip, "left")}
                               style={{
-                                position: "absolute",
-                                left: 0,
-                                top: 0,
-                                bottom: 0,
-                                width: "7px",
-                                cursor: "ew-resize",
-                                background: "rgba(255,255,255,0.18)",
-                                borderRadius: "3px 0 0 3px",
-                                zIndex: 2,
+                                position: "absolute", left: 0, top: 0, bottom: 0, width: "7px",
+                                cursor: "ew-resize", background: "rgba(255,255,255,0.18)",
+                                borderRadius: "3px 0 0 3px", zIndex: 2,
                               }}
                             />
                           )}
@@ -709,20 +723,13 @@ export const Timeline: React.FC = () => {
                             {clip.startOffset.toFixed(1)}s – {clip.endOffset.toFixed(1)}s
                           </span>
 
-                          {/* Right resize handle */}
                           {!isLocked && (
                             <div
                               onMouseDown={(e) => handleResizeMouseDown(e, clip, "right")}
                               style={{
-                                position: "absolute",
-                                right: 0,
-                                top: 0,
-                                bottom: 0,
-                                width: "7px",
-                                cursor: "ew-resize",
-                                background: "rgba(255,255,255,0.18)",
-                                borderRadius: "0 3px 3px 0",
-                                zIndex: 2,
+                                position: "absolute", right: 0, top: 0, bottom: 0, width: "7px",
+                                cursor: "ew-resize", background: "rgba(255,255,255,0.18)",
+                                borderRadius: "0 3px 3px 0", zIndex: 2,
                               }}
                             />
                           )}
@@ -740,21 +747,19 @@ export const Timeline: React.FC = () => {
                 style={{
                   position: "absolute",
                   left: `${snapLineTime * zoom + 120}px`,
-                  top: 0,
-                  bottom: 0,
-                  width: "1.5px",
+                  top: 0, bottom: 0, width: "1.5px",
                   backgroundColor: "#38bdf8",
                   boxShadow: "0 0 8px #38bdf8",
-                  zIndex: 5,
-                  pointerEvents: "none",
+                  zIndex: 5, pointerEvents: "none",
                 }}
               />
             )}
 
-            {/* Playhead line */}
+            {/* Playhead line — position driven by DOM ref via playheadBus, zero re-renders */}
             <div
+              ref={playheadLineRef}
               className="timeline-playhead-line"
-              style={{ left: `${playhead * zoom + 120}px` }}
+              style={{ left: `${playheadRef.current * zoom + 120}px` }}
             >
               <div className="timeline-playhead-handle"></div>
             </div>
