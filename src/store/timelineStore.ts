@@ -328,6 +328,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   }),
 
   updateClipOffsets: (clipId, startOffset, endOffset) => set((state) => {
+    if (startOffset >= endOffset) return {};
     const containingTrack = state.tracks.find((t) => t.clips.some((c) => c.id === clipId));
     if (containingTrack?.locked) return {};
 

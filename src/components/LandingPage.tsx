@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Layers, FolderOpen, Plus, PlusCircle, Clock, Folder, Loader2, AlertCircle, Film, X, Trash2 } from "lucide-react";
 import { useTimelineStore } from "../store/timelineStore";
 
@@ -578,40 +577,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterEditor }) => {
           </div>
         </div>
       )}
-      {/* Close button at the top right of the landing page */}
-      <button
-        onClick={() => getCurrentWindow().close()}
-        style={{
-          position: "absolute",
-          top: "24px",
-          right: "24px",
-          background: "rgba(255,255,255,0.03)",
-          border: "1px solid var(--border-dim)",
-          borderRadius: "8px",
-          width: "32px",
-          height: "32px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          cursor: "pointer",
-          color: "var(--text-muted)",
-          transition: "background 0.15s, color 0.15s, border-color 0.15s",
-          zIndex: 9999,
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = "rgba(239, 68, 68, 0.15)";
-          e.currentTarget.style.color = "#f87171";
-          e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.3)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = "rgba(255,255,255,0.03)";
-          e.currentTarget.style.color = "var(--text-muted)";
-          e.currentTarget.style.borderColor = "var(--border-dim)";
-        }}
-        title="Exit Application"
-      >
-        <X size={16} />
-      </button>
     </div>
   );
 };

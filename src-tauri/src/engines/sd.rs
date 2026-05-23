@@ -12,10 +12,10 @@ pub async fn generate_sd_image(
     cfg_scale: f32,
     checkpoint_name: String,
 ) -> Result<String, String> {
-    let cwd = std::env::current_dir().map_err(|e| format!("Failed to get CWD: {}", e))?;
-    
+    let root = crate::utils::paths::workspace_root()?;
+
     // Ensure temp/generated exists
-    let output_dir = cwd.join("temp/generated");
+    let output_dir = root.join("temp/generated");
     std::fs::create_dir_all(&output_dir)
         .map_err(|e| format!("Failed to create output dir: {}", e))?;
 
@@ -24,13 +24,13 @@ pub async fn generate_sd_image(
     let output_path = output_dir.join(format!("sd_{}.png", run_id));
 
     // Resolve checkpoint path
-    let checkpoint_path = cwd.join("models").join(&checkpoint_name);
+    let checkpoint_path = root.join("models").join(&checkpoint_name);
     if !checkpoint_path.exists() {
         return Err(format!("Stable Diffusion checkpoint does not exist at {:?}", checkpoint_path));
     }
 
     // Resolve sd-cli binary
-    let sd_bin = cwd.join("bin/sd-cli");
+    let sd_bin = root.join("bin/sd-cli");
     if !sd_bin.exists() {
         return Err("sd-cli binary not found in bin/sd-cli. Compile stable-diffusion.cpp first.".to_string());
     }

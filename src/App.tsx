@@ -33,7 +33,7 @@ import "./App.css";
 
 function App() {
   const {
-    systemStatus, setSystemStatus, tracks: timelineTracks,
+    systemStatus, setSystemStatus, tracks: timelineTracks, mediaPool,
     hasOpenProject, setHasOpenProject,
     projectPath, setProjectPath, projectName, setProjectName,
     getProjectJson, workspacePath,
@@ -199,10 +199,16 @@ function App() {
     let mounted = true;
     let unlisten: (() => void) | undefined;
     (async () => {
-      const fn = await win.onCloseRequested((event) => {
+      const fn = await win.onCloseRequested(async (event) => {
         if (hasOpenProjectRef.current) {
           event.preventDefault();
-          handleCloseProjectRef.current();
+          if (isDirtyRef.current) {
+            setShowExitDialog(true);
+          } else {
+            await win.destroy();
+          }
+        } else {
+          await win.destroy();
         }
       });
       if (mounted) unlisten = fn; else fn();
@@ -253,6 +259,7 @@ function App() {
           volume: c.volume,
           speed: c.speed,
           text: c.text || null,
+          hasAudio: mediaPool.find((m) => m.filePath === c.filePath)?.hasAudio ?? false,
         })),
         locked: !!t.locked,
         muted: !!t.muted,
@@ -589,38 +596,6 @@ function App() {
             <Film size={12} />
             Export Video
           </button>
-
-          {/* Editor close button 'x' */}
-          <button
-            onClick={handleCloseProject}
-            style={{
-              background: "rgba(255,255,255,0.03)",
-              border: "1px solid var(--border-dim)",
-              borderRadius: "6px",
-              width: "28px",
-              height: "28px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              color: "var(--text-muted)",
-              transition: "background 0.15s, color 0.15s, border-color 0.15s",
-              marginLeft: "4px",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(239, 68, 68, 0.15)";
-              e.currentTarget.style.color = "#f87171";
-              e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.3)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "rgba(255,255,255,0.03)";
-              e.currentTarget.style.color = "var(--text-muted)";
-              e.currentTarget.style.borderColor = "var(--border-dim)";
-            }}
-            title="Close Editor (Return to Projects Menu)"
-          >
-            <X size={14} />
-          </button>
         </div>
       </header>
 
@@ -939,7 +914,10 @@ function App() {
               <button
                 className="btn-secondary"
                 style={{ fontSize: "11px", padding: "6px 14px" }}
-                onClick={() => { setShowExitDialog(true); getCurrentWindow().close(); }}
+                onClick={() => {
+                  setShowExitDialog(false);
+                  getCurrentWindow().destroy();
+                }}
               >
                 Discard
               </button>
@@ -949,7 +927,7 @@ function App() {
                 onClick={async () => {
                   setShowExitDialog(false);
                   await handleSaveProject();
-                  getCurrentWindow().close();
+                  getCurrentWindow().destroy();
                 }}
               >
                 Save &amp; Close

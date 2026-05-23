@@ -108,54 +108,13 @@ export const MonitorProgram: React.FC = () => {
     }
   }, [playhead, tracks, mediaPool, videoSrc]);
 
-  // Synchronous play/pause receiver to maintain user gesture call stack
+  // Pause receiver — play is handled directly in handleTogglePlay to keep user-gesture context.
+  // CustomEvent dispatch breaks the WebKit2GTK gesture chain, so no .play() calls here.
   useEffect(() => {
     const handleToggle = (e: Event) => {
       const play = (e as CustomEvent).detail;
-      const video = videoRef.current;
-      
-      if (play) {
-        // 1. Play active video
-        if (video && videoSrcRef.current && activeClipRef.current?.type === "video") {
-          const localTime = (playheadRef.current - activeClipRef.current.timeStart) * activeClipRef.current.speed + activeClipRef.current.startOffset;
-          safeSetCurrentTime(video, localTime);
-          
-          const videoTrack = tracks.find((t) => t.type === "video");
-          const isVideoMuted = videoTrack?.muted || false;
-          video.muted = isVideoMuted;
-          video.volume = isVideoMuted ? 0 : 1.0;
-          
-          videoPlayingRef.current = activeClipRef.current.id;
-          video.play().catch((err) => {
-            console.warn("video play blocked inside event:", err);
-            videoPlayingRef.current = null;
-          });
-        }
-
-        // 2. Play active audio clips
-        const currentTracks = useTimelineStore.getState().tracks;
-        const currentAudioClips = currentTracks.filter((t) => t.type === "audio").flatMap((t) => t.clips);
-        audioRefsMap.current.forEach((audio, clipId) => {
-          const clip = currentAudioClips.find((c) => c.id === clipId);
-          if (!clip) return;
-          const clipEnd = clip.timeStart + (clip.endOffset - clip.startOffset) / clip.speed;
-          const track = currentTracks.find((t) => t.id === clip.trackId);
-          const isMuted = track?.muted || false;
-
-          if (playheadRef.current >= clip.timeStart && playheadRef.current < clipEnd) {
-            const localTime = (playheadRef.current - clip.timeStart) * clip.speed + clip.startOffset;
-            safeSetCurrentTime(audio, localTime);
-            audio.muted = isMuted;
-            audio.volume = isMuted ? 0 : (clip.volume ?? 1.0);
-            
-            playingAudiosRef.current.add(clip.id);
-            audio.play().catch((err) => {
-              console.warn("audio play blocked inside event:", err);
-              playingAudiosRef.current.delete(clip.id);
-            });
-          }
-        });
-      } else {
+      if (!play) {
+        const video = videoRef.current;
         if (video) video.pause();
         audioRefsMap.current.forEach((a) => a.pause());
         videoPlayingRef.current = null;
@@ -165,7 +124,7 @@ export const MonitorProgram: React.FC = () => {
 
     window.addEventListener("playback-toggle", handleToggle);
     return () => window.removeEventListener("playback-toggle", handleToggle);
-  }, [tracks]);
+  }, []);
 
   // Unified play/pause effect driven by store isPlaying transition
   useEffect(() => {
@@ -297,8 +256,9 @@ export const MonitorProgram: React.FC = () => {
         video.volume = isVideoMuted ? 0 : 1.0;
 
         const targetLocalTime = (next - activeCl.timeStart) * activeCl.speed + activeCl.startOffset;
-        
+
         if (videoPlayingRef.current !== activeCl.id) {
+          video.playbackRate = activeCl.speed;
           safeSetCurrentTime(video, targetLocalTime);
           videoPlayingRef.current = activeCl.id;
           video.play().catch((e) => {
@@ -307,7 +267,7 @@ export const MonitorProgram: React.FC = () => {
           });
         } else {
           const drift = Math.abs(video.currentTime - targetLocalTime);
-          if (drift > 0.25) {
+          if (drift > 0.04) {
             safeSetCurrentTime(video, targetLocalTime);
           }
         }
@@ -401,6 +361,40 @@ export const MonitorProgram: React.FC = () => {
   const handleTogglePlay = () => {
     const nextPlaying = !isPlaying;
     setIsPlaying(nextPlaying);
+
+    if (nextPlaying) {
+      // WebKit2GTK breaks the user-gesture chain across CustomEvent dispatches, so
+      // video.play() / audio.play() must be called directly here — not in a listener.
+      const video = videoRef.current;
+      if (video && videoSrc && activeClip?.type === "video") {
+        const localTime = (playhead - activeClip.timeStart) * activeClip.speed + activeClip.startOffset;
+        video.playbackRate = activeClip.speed;
+        safeSetCurrentTime(video, localTime);
+        video.muted = false;
+        video.volume = 1.0;
+        video.play().catch(() => {});
+      }
+      // Play in-range audio clips and prime out-of-range ones so the RAF loop can
+      // call .play() on them later without needing another user gesture.
+      audioRefsMap.current.forEach((audio, clipId) => {
+        const clip = audioClips.find((c) => c.id === clipId);
+        if (!clip) return;
+        const clipEnd = clip.timeStart + (clip.endOffset - clip.startOffset) / clip.speed;
+        const inRange = playhead >= clip.timeStart && playhead < clipEnd;
+        const track = tracks.find((t) => t.id === clip.trackId);
+        const isMuted = track?.muted || false;
+        if (inRange) {
+          const localTime = (playhead - clip.timeStart) * clip.speed + clip.startOffset;
+          audio.muted = isMuted;
+          audio.volume = isMuted ? 0 : (clip.volume ?? 1.0);
+          safeSetCurrentTime(audio, localTime);
+          audio.play().catch(() => {});
+        } else {
+          audio.play().then(() => audio.pause()).catch(() => {});
+        }
+      });
+    }
+
     window.dispatchEvent(new CustomEvent("playback-toggle", { detail: nextPlaying }));
   };
 
