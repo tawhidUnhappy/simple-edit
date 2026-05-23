@@ -32,8 +32,11 @@ const MEDIA_EXTENSIONS = ["mp4", "mov", "avi", "mkv", "webm", "m4v", "mpg", "mpe
 
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"]);
 
+const toMediaUrl = (path: string, port: number) =>
+  `http://127.0.0.1:${port}/file?path=${encodeURIComponent(path)}`;
+
 export const MediaPool: React.FC = () => {
-  const { mediaPool, addMediaFile, removeMediaFile, updateMediaFile, addClip, tracks } = useTimelineStore();
+  const { mediaPool, addMediaFile, removeMediaFile, updateMediaFile, addClip, tracks, mediaServerPort } = useTimelineStore();
   const [isImporting, setIsImporting] = useState(false);
   const [importCount, setImportCount] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -395,15 +398,16 @@ export const MediaPool: React.FC = () => {
                       </div>
                       <audio
                         key={live.filePath}
-                        src={convertFileSrc(live.filePath)}
+                        src={toMediaUrl(live.filePath, mediaServerPort)}
                         controls
                         style={{ width: "280px" }}
                       />
                     </div>
                   );
                 } else {
-                  // Prefer proxy (VP8/WebM — WebKit2GTK native) over original which may need extra GStreamer codecs
-                  const videoSrc = live.proxyPath ? convertFileSrc(live.proxyPath) : convertFileSrc(live.filePath);
+                  // Prefer proxy (VP8/WebM) over original; serve via local HTTP for proper Range request support
+                  const srcPath = live.proxyPath ?? live.filePath;
+                  const videoSrc = toMediaUrl(srcPath, mediaServerPort);
                   return (
                     <video
                       key={videoSrc}

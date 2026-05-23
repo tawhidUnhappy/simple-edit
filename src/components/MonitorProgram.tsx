@@ -41,8 +41,11 @@ const safeSetCurrentTime = (media: HTMLMediaElement, time: number) => {
   }
 };
 
+const toMediaUrl = (path: string, port: number) =>
+  `http://127.0.0.1:${port}/file?path=${encodeURIComponent(path)}`;
+
 export const MonitorProgram: React.FC = () => {
-  const { playhead, setPlayhead, isPlaying, setIsPlaying, tracks, timelineDuration, lyricsText, mediaPool } = useTimelineStore();
+  const { playhead, setPlayhead, isPlaying, setIsPlaying, tracks, timelineDuration, lyricsText, mediaPool, mediaServerPort } = useTimelineStore();
   const videoRef = useRef<HTMLVideoElement>(null);
   const rafRef = useRef<number | null>(null);
 
@@ -87,7 +90,7 @@ export const MonitorProgram: React.FC = () => {
 
     const poolItem = clip ? mediaPool.find((m) => m.filePath === clip.filePath) : null;
     const resolvedPath = poolItem?.proxyPath || clip?.proxyPath || clip?.filePath || null;
-    const resolvedUrl = resolvedPath ? convertFileSrc(resolvedPath) : null;
+    const resolvedUrl = resolvedPath && mediaServerPort > 0 ? toMediaUrl(resolvedPath, mediaServerPort) : null;
 
     if (clip?.id !== activeClipRef.current?.id || (clip?.type === "video" && videoSrc !== resolvedUrl)) {
       setActiveClip(clip);
@@ -95,7 +98,7 @@ export const MonitorProgram: React.FC = () => {
         setVideoSrc(resolvedUrl);
         setImageSrc(null);
       } else if (clip?.type === "image") {
-        setImageSrc(convertFileSrc(clip.filePath));
+        setImageSrc(convertFileSrc(clip.filePath)); // images are small, asset:// is fine
         setVideoSrc(null);
       } else {
         setVideoSrc(null);
@@ -439,7 +442,7 @@ export const MonitorProgram: React.FC = () => {
               if (el) audioRefsMap.current.set(clip.id, el);
               else audioRefsMap.current.delete(clip.id);
             }}
-            src={convertFileSrc(clip.filePath)}
+            src={mediaServerPort > 0 ? toMediaUrl(clip.filePath, mediaServerPort) : ""}
             preload="auto"
           />
         ))}

@@ -92,6 +92,10 @@ interface TimelineState {
   lyricsText: string;
   setLyricsText: (text: string) => void;
 
+  // Local HTTP media server port (0 = not yet started)
+  mediaServerPort: number;
+  setMediaServerPort: (port: number) => void;
+
   // Media pool
   mediaPool: MediaFile[];
   addMediaFile: (file: MediaFile) => void;
@@ -198,6 +202,9 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     projectPath: null,
     isDirty: false,
   }),
+
+  mediaServerPort: 0,
+  setMediaServerPort: (port) => set({ mediaServerPort: port }),
 
   mediaPool: [],
   addMediaFile: (file) => set((state) => ({ mediaPool: [...state.mediaPool, file], isDirty: true })),

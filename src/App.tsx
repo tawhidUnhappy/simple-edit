@@ -41,6 +41,7 @@ function App() {
     zoom, setZoom,
     selectedClipId, playhead, splitClip, deleteClip,
     resetProject,
+    setMediaServerPort,
   } = useTimelineStore();
   const [leftTab, setLeftTab] = useState<"media" | "models">("media");
   const [rightTab, setRightTab] = useState<"tools" | "generation" | "visualizer" | "lyrics" | "inspector">("tools");
@@ -99,6 +100,7 @@ function App() {
 
   useEffect(() => {
     fetchSystemStatus();
+    invoke<number>("get_media_server_port").then(setMediaServerPort).catch(console.error);
   }, []);
 
   // Listen for backend export events — must be before any conditional returns

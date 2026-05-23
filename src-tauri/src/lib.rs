@@ -6,6 +6,7 @@ pub mod engines;
 
 use commands::download::DownloadManager;
 use commands::python_server::PythonServerState;
+use commands::media_server::MediaServerState;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -18,6 +19,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(DownloadManager::new())
         .manage(PythonServerState::new())
+        .manage(MediaServerState::new())
         .invoke_handler(tauri::generate_handler![
             commands::bootstrap::check_system_status,
             commands::download::resolve_civitai_url,
@@ -28,6 +30,7 @@ pub fn run() {
             commands::download::list_local_models,
             commands::updater::update_tool_repo,
             commands::media::import_media_file,
+            commands::media_server::get_media_server_port,
             commands::python_server::get_python_server_port,
             commands::timeline::export_project,
             commands::settings::get_workspace_dir,
