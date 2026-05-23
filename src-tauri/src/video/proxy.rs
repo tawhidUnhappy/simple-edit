@@ -48,18 +48,22 @@ pub async fn generate_proxy_in_background(
             error: None,
         });
 
-        // VP8 realtime: fast encode, universally playable in WebKit2GTK
+        // VP8 preview proxy: 480p/600kbps — enough for smooth preview, low decoder CPU.
+        // -g 60: keyframe every 2 s (30 fps) for fast seeking.
+        // -threads 2: cap FFmpeg so it doesn't starve the UI during background encode.
         let output = Command::new(&ffmpeg_path)
             .args(&[
                 "-y",
                 "-i", &input_file_path,
                 "-vf", "scale=-2:480",
                 "-c:v", "libvpx",
-                "-b:v", "1500k",
+                "-b:v", "600k",
                 "-deadline", "realtime",
                 "-cpu-used", "8",
+                "-g", "60",
+                "-threads", "2",
                 "-c:a", "libvorbis",
-                "-b:a", "64k",
+                "-b:a", "48k",
                 output_path.to_str().unwrap_or(""),
             ])
             .output()

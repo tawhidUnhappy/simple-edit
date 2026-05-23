@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTimelineStore, SystemInfo } from "./store/timelineStore";
+import { useShallow } from "zustand/react/shallow";
 import { playheadBus } from "./lib/playheadBus";
 import { MediaPool } from "./components/MediaPool";
 import { MonitorProgram } from "./components/MonitorProgram";
@@ -33,6 +34,8 @@ import {
 import "./App.css";
 
 function App() {
+  // Shallow selector excludes playhead + isPlaying — those update at 60/10fps and must
+  // not cause App.tsx (and therefore all children) to re-render during playback.
   const {
     systemStatus, setSystemStatus, tracks: timelineTracks, mediaPool,
     hasOpenProject, setHasOpenProject,
@@ -43,7 +46,29 @@ function App() {
     selectedClipId, splitClip, deleteClip,
     resetProject,
     setMediaServerPort,
-  } = useTimelineStore();
+  } = useTimelineStore(useShallow((s) => ({
+    systemStatus: s.systemStatus,
+    setSystemStatus: s.setSystemStatus,
+    tracks: s.tracks,
+    mediaPool: s.mediaPool,
+    hasOpenProject: s.hasOpenProject,
+    setHasOpenProject: s.setHasOpenProject,
+    projectPath: s.projectPath,
+    setProjectPath: s.setProjectPath,
+    projectName: s.projectName,
+    setProjectName: s.setProjectName,
+    getProjectJson: s.getProjectJson,
+    workspacePath: s.workspacePath,
+    isDirty: s.isDirty,
+    markClean: s.markClean,
+    zoom: s.zoom,
+    setZoom: s.setZoom,
+    selectedClipId: s.selectedClipId,
+    splitClip: s.splitClip,
+    deleteClip: s.deleteClip,
+    resetProject: s.resetProject,
+    setMediaServerPort: s.setMediaServerPort,
+  })));
   const [leftTab, setLeftTab] = useState<"media" | "models">("media");
   const [rightTab, setRightTab] = useState<"tools" | "generation" | "visualizer" | "lyrics" | "inspector">("tools");
   const [isRefreshing, setIsRefreshing] = useState(false);
