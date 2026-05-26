@@ -17,20 +17,34 @@ export function getAnalyser(): AnalyserNode | null {
   return _analyser;
 }
 
-// Call this from a user-gesture handler (button click) to create and unlock the AudioContext.
-// ensureContext() is called here so _ctx is guaranteed to exist when connectAudioElement runs later.
+// Call from a user-gesture handler to create & unlock the AudioContext.
 export function resumeContext(): void {
-  const ctx = ensureContext();
-  if (ctx.state !== "running") ctx.resume().catch(() => {});
+  try {
+    const ctx = ensureContext();
+    if (ctx.state !== "running") ctx.resume().catch(() => {});
+  } catch {}
 }
 
-// Safe to call multiple times per element — only connects once.
-export function connectAudioElement(el: HTMLAudioElement): void {
-  if (_connected.has(el)) return;
+// Defers cb until AudioContext is running.
+// If no context yet, or already running, calls cb immediately.
+// Falls back to calling cb even if resume fails (so audio still plays directly).
+export function whenContextRunning(cb: () => void): void {
+  if (!_ctx || _ctx.state === "running") { cb(); return; }
+  _ctx.resume().then(cb).catch(cb);
+}
+
+// Returns true if the element is now routed through the shared AudioContext+AnalyserNode.
+// Returns false if createMediaElementSource threw (CORS or unsupported) — element plays directly.
+// Safe to call multiple times; only connects once per element.
+export function connectAudioElement(el: HTMLAudioElement): boolean {
+  if (_connected.has(el)) return true;
   try {
     const ctx = ensureContext();
     const source = ctx.createMediaElementSource(el);
     source.connect(_analyser!);
     _connected.add(el);
-  } catch {}
+    return true;
+  } catch {
+    return false; // element not captured — plays directly to system audio
+  }
 }

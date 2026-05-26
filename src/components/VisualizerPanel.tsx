@@ -1,18 +1,24 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { useTimelineStore } from "../store/timelineStore";
 import { getAnalyser } from "../lib/audioContext";
-import { Music, Zap, Settings, Activity, Loader2 } from "lucide-react";
+import { SyrexCanvas } from "./SyrexCanvas";
+import { Music, Zap, Activity, Loader2 } from "lucide-react";
 
 export const VisualizerPanel: React.FC = () => {
-  const { mediaPool, lyricsText } = useTimelineStore();
+  const { mediaPool, lyricsText, mediaServerPort } = useTimelineStore();
   const [selectedAudioId, setSelectedAudioId] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisData, setAnalysisData] = useState<any | null>(null);
-  const [visualizerStyle, setVisualizerStyle] = useState<"bars" | "ring" | "spectrum" | "syrex">("bars");
+  const [visualizerStyle, setVisualizerStyle] = useState<"bars" | "ring" | "spectrum" | "syrex">("syrex");
   const [glowIntensity, setGlowIntensity] = useState(0);
-  const [primaryColor, setPrimaryColor] = useState("#ffffff"); // Monochrome white
-  const [secondaryColor, setSecondaryColor] = useState("#555555"); // Monochrome slate grey
+  const [primaryColor, setPrimaryColor] = useState("#ffffff");
+  const [secondaryColor, setSecondaryColor] = useState("#555555");
+  // Syrex-specific state
+  const [bgMediaId, setBgMediaId] = useState("");
+  const [artistName, setArtistName] = useState("");
+  const [songTitle, setSongTitle] = useState("");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -347,139 +353,139 @@ export const VisualizerPanel: React.FC = () => {
     };
   }, [analysisData, visualizerStyle, glowIntensity, primaryColor, secondaryColor, parsedLyrics]);
 
+  // Resolve background image URL for SyrexCanvas
+  const bgItem = mediaPool.find((m) => m.id === bgMediaId);
+  const bgSrc = bgItem
+    ? (mediaServerPort > 0
+        ? `http://127.0.0.1:${mediaServerPort}/file?path=${encodeURIComponent(bgItem.filePath)}`
+        : convertFileSrc(bgItem.filePath))
+    : null;
+
+  const imageFiles = mediaPool.filter(
+    (m) => !m.hasAudio && (m.filePath.match(/\.(jpe?g|png|gif|webp|bmp|avif)$/i)),
+  );
+
   return (
-    <div className="panel-content" style={{ display: "flex", flexDirection: "column", height: "100%", gap: "8px" }}>
+    <div className="panel-content" style={{ display: "flex", flexDirection: "column", height: "100%", gap: "8px", padding: "10px" }}>
       <label className="input-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
         <Activity size={13} style={{ color: "var(--text-bright)" }} />
-        Beat-Reactive Visualizer Panel
+        Beat-Reactive Visualizer
       </label>
 
-      {/* Render Canvas */}
-      <div style={{
-        position: "relative",
-        height: "160px",
-        borderRadius: "8px",
-        border: "1px solid var(--border-normal)",
-        background: "var(--bg-darker)",
-        overflow: "hidden",
-        boxShadow: "inset 0 4px 20px rgba(0,0,0,0.6)"
-      }}>
-        <canvas ref={canvasRef} width={380} height={160} style={{ width: "100%", height: "100%" }} />
-        
-        {analysisData && (
-          <div style={{
-            position: "absolute",
-            top: "8px",
-            right: "8px",
-            background: "var(--bg-darker)",
-            border: "1px solid var(--border-normal)",
-            padding: "2px 6px",
-            borderRadius: "4px",
-            fontSize: "9px",
-            color: "#fff",
-            display: "flex",
-            alignItems: "center",
-            gap: "4px"
-          }}>
-            <Zap size={8} /> {analysisData.bpm.toFixed(0)} BPM
-          </div>
-        )}
+      {/* Style tabs */}
+      <div style={{ display: "flex", gap: "4px" }}>
+        {(["syrex", "bars", "ring", "spectrum"] as const).map((style) => (
+          <button
+            key={style}
+            onClick={() => setVisualizerStyle(style)}
+            className="btn-secondary"
+            style={{
+              flex: 1, fontSize: "9px", padding: "4px 0",
+              borderColor: visualizerStyle === style ? "var(--border-focus)" : "var(--border-normal)",
+              color: visualizerStyle === style ? "#fff" : "var(--text-muted)",
+            }}
+          >{style.toUpperCase()}</button>
+        ))}
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "10px" }}>
-        <div className="input-group">
-          <label className="input-label">Select Audio Track</label>
-          <select
-            value={selectedAudioId}
-            onChange={(e) => setSelectedAudioId(e.target.value)}
-            style={{ fontSize: "11px" }}
-          >
-            <option value="">-- Choose imported audio --</option>
-            {audioFiles.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name} ({Math.round(m.duration)}s)
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button
-            className="btn-primary"
-            onClick={handleAnalyzeAudio}
-            disabled={isAnalyzing || !selectedAudioId}
-            style={{ flex: 1 }}
-          >
-            {isAnalyzing ? (
-              <>
-                <Loader2 size={12} className="animate-spin" /> Analyzing Beats...
-              </>
-            ) : (
-              <>
-                <Music size={12} /> Analyze Beat Mapping (Librosa)
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Visualizer Style Settings */}
-        <div className="card-list" style={{ marginTop: "4px" }}>
-          <span className="input-label" style={{ fontSize: "10px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
-            <Settings size={10} /> Style Customizer
-          </span>
-
-          <div style={{ display: "flex", gap: "6px", margin: "4px 0" }}>
-            {["bars", "ring", "spectrum", "syrex"].map((style) => (
-              <button
-                key={style}
-                onClick={() => setVisualizerStyle(style as any)}
-                className={`btn-secondary ${visualizerStyle === style ? "active" : ""}`}
-                style={{
-                  flex: 1,
-                  fontSize: "10px",
-                  padding: "4px 0",
-                  borderColor: visualizerStyle === style ? "var(--border-focus)" : "var(--border-normal)",
-                  color: visualizerStyle === style ? "#fff" : "var(--text-muted)",
-                }}
-              >
-                {style.toUpperCase()}
-              </button>
-            ))}
-          </div>
-
-          <div className="item-card-row" style={{ fontSize: "11px", display: "flex", alignItems: "center", justifyContent: "space-between", margin: "4px 0" }}>
-            <span>Glow Intensity</span>
-            <input
-              type="range"
-              min="0"
-              max="30"
-              value={glowIntensity}
-              onChange={(e) => setGlowIntensity(parseInt(e.target.value))}
-              style={{ width: "100px", accentColor: primaryColor }}
-            />
-          </div>
-
-          <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "2px" }}>
-              <span style={{ fontSize: "9px", color: "var(--text-muted)" }}>Color A</span>
-              <input
-                type="color"
-                value={primaryColor}
-                onChange={(e) => setPrimaryColor(e.target.value)}
-                style={{ width: "100%", height: "24px", padding: 0, border: 0, cursor: "pointer", borderRadius: "4px", background: "transparent" }}
-              />
+      {/* Canvas area */}
+      {visualizerStyle === "syrex" ? (
+        <SyrexCanvas
+          backgroundSrc={bgSrc}
+          artistName={artistName}
+          songTitle={songTitle}
+          lyricsText={lyricsText}
+        />
+      ) : (
+        <div style={{
+          position: "relative", borderRadius: "8px",
+          border: "1px solid var(--border-normal)",
+          background: "var(--bg-darker)", overflow: "hidden",
+          boxShadow: "inset 0 4px 20px rgba(0,0,0,0.6)"
+        }}>
+          <canvas ref={canvasRef} width={380} height={160} style={{ width: "100%", height: "auto", display: "block" }} />
+          {analysisData && (
+            <div style={{
+              position: "absolute", top: "8px", right: "8px",
+              background: "var(--bg-darker)", border: "1px solid var(--border-normal)",
+              padding: "2px 6px", borderRadius: "4px", fontSize: "9px", color: "#fff",
+              display: "flex", alignItems: "center", gap: "4px"
+            }}>
+              <Zap size={8} /> {analysisData.bpm.toFixed(0)} BPM
             </div>
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "2px" }}>
-              <span style={{ fontSize: "9px", color: "var(--text-muted)" }}>Color B</span>
-              <input
-                type="color"
-                value={secondaryColor}
-                onChange={(e) => setSecondaryColor(e.target.value)}
-                style={{ width: "100%", height: "24px", padding: 0, border: 0, cursor: "pointer", borderRadius: "4px", background: "transparent" }}
-              />
+          )}
+        </div>
+      )}
+
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px" }}>
+        {/* Syrex controls */}
+        {visualizerStyle === "syrex" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <div className="input-group">
+              <label className="input-label">Background Image</label>
+              <select value={bgMediaId} onChange={(e) => setBgMediaId(e.target.value)} style={{ fontSize: "11px" }}>
+                <option value="">-- None (dark) --</option>
+                {imageFiles.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: "6px" }}>
+              <div className="input-group" style={{ flex: 1 }}>
+                <label className="input-label">Artist</label>
+                <input
+                  type="text" value={artistName}
+                  onChange={(e) => setArtistName(e.target.value)}
+                  placeholder="JIM YOSEF" style={{ fontSize: "11px", padding: "5px 8px" }}
+                />
+              </div>
+              <div className="input-group" style={{ flex: 1 }}>
+                <label className="input-label">Title</label>
+                <input
+                  type="text" value={songTitle}
+                  onChange={(e) => setSongTitle(e.target.value)}
+                  placeholder="BLEEDING ROSE" style={{ fontSize: "11px", padding: "5px 8px" }}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* Non-syrex controls */}
+        {visualizerStyle !== "syrex" && (
+          <>
+            <div className="input-group">
+              <label className="input-label">Select Audio Track</label>
+              <select value={selectedAudioId} onChange={(e) => setSelectedAudioId(e.target.value)} style={{ fontSize: "11px" }}>
+                <option value="">-- Choose imported audio --</option>
+                {audioFiles.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name} ({Math.round(m.duration)}s)</option>
+                ))}
+              </select>
+            </div>
+            <button className="btn-primary" onClick={handleAnalyzeAudio} disabled={isAnalyzing || !selectedAudioId}>
+              {isAnalyzing ? <><Loader2 size={12} className="animate-spin" /> Analyzing...</> : <><Music size={12} /> Analyze (Librosa)</>}
+            </button>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "11px" }}>
+              <span style={{ color: "var(--text-muted)", minWidth: 60 }}>Glow</span>
+              <input type="range" min="0" max="30" value={glowIntensity}
+                onChange={(e) => setGlowIntensity(parseInt(e.target.value))}
+                style={{ flex: 1, accentColor: primaryColor }} />
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "2px" }}>
+                <span style={{ fontSize: "9px", color: "var(--text-muted)" }}>Color A</span>
+                <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)}
+                  style={{ width: "100%", height: "24px", padding: 0, border: 0, cursor: "pointer", borderRadius: "4px" }} />
+              </div>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "2px" }}>
+                <span style={{ fontSize: "9px", color: "var(--text-muted)" }}>Color B</span>
+                <input type="color" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)}
+                  style={{ width: "100%", height: "24px", padding: 0, border: 0, cursor: "pointer", borderRadius: "4px" }} />
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

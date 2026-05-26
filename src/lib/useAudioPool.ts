@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { Clip } from "../store/timelineStore";
-import { connectAudioElement, resumeContext } from "./audioContext";
+import { connectAudioElement, whenContextRunning } from "./audioContext";
 
 export function useAudioPool(
   clips: Clip[],
@@ -61,10 +61,16 @@ export function useAudioPool(
     el.volume = isMuted ? 0 : (clip.volume ?? 1.0);
     el.playbackRate = clip.speed;
 
-    connectAudioElement(el); // route through shared AudioContext → AnalyserNode
-    resumeContext();          // no-op if already running; recovers if context was somehow suspended
+    const routed = connectAudioElement(el);
     if (Math.abs(el.currentTime - targetTime) > 0.1) el.currentTime = targetTime;
-    el.play().catch(() => {});
+    if (routed) {
+      // Element goes through AudioContext — must wait for it to be running or audio is silent.
+      // whenContextRunning defers play() until ctx.resume() resolves; falls back on failure.
+      whenContextRunning(() => { el.play().catch(() => {}); });
+    } else {
+      // createMediaElementSource threw (CORS etc.) — element is NOT captured, plays directly.
+      el.play().catch(() => {});
+    }
     return true;
   }, [mediaServerPort, getOrCreate, getTrackMuted]);
 
