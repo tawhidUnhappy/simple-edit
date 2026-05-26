@@ -17,11 +17,13 @@ export function getAnalyser(): AnalyserNode | null {
   return _analyser;
 }
 
+// Call this from a user-gesture handler (button click) to create and unlock the AudioContext.
+// ensureContext() is called here so _ctx is guaranteed to exist when connectAudioElement runs later.
 export function resumeContext(): void {
-  if (_ctx?.state === "suspended") _ctx.resume().catch(() => {});
+  const ctx = ensureContext();
+  if (ctx.state !== "running") ctx.resume().catch(() => {});
 }
 
-// Must be called from user-gesture context or after resumeContext() has been called.
 // Safe to call multiple times per element — only connects once.
 export function connectAudioElement(el: HTMLAudioElement): void {
   if (_connected.has(el)) return;
